@@ -1,6 +1,6 @@
 # Ideascope — Implementation Plan
 
-**Status:** Draft v1 — planning complete, implementation not yet started.
+**Status:** Draft v2 — planning complete, implementation not yet started. (v2 is a full revision pass: adopts API-native structured outputs and prompt caching, pins concrete model roles and pricing, and closes engineering gaps — scene runtime contract, screenshot timing, Playwright resource limits, SSE keepalives, observability, accessibility. See §18 for the change list.)
 **Companion doc:** [`../README.md`](../README.md) has the project charter (why, principles, locked decisions D1–D12). This document turns that charter into an executable, ordered plan. Nothing here should contradict the README; if it ever does, the README is the source of truth for *what*, this doc is the source of truth for *how and in what order*.
 
 This plan resolves every "open decision" the README flagged and adds the engineering detail needed to build without re-litigating architecture mid-implementation. Where the README left something ambiguous, this doc makes a concrete call — the goal is zero surprises once coding starts, not maximum flexibility.
@@ -26,6 +26,7 @@ This plan resolves every "open decision" the README flagged and adds the enginee
 15. [Risk register](#15-risk-register)
 16. [Demo-readiness checklist](#16-demo-readiness-checklist)
 17. [Open questions to revisit](#17-open-questions-to-revisit)
+18. [Revision history](#18-revision-history)
 
 ---
 
@@ -46,6 +47,10 @@ Additional decisions this plan makes that the README left implicit:
 - **TTS for MVP:** the browser's native `SpeechSynthesis` API, not a backend TTS call. It's free, has zero added latency/cost, and satisfies D5 (toggleable narration) completely. A paid, higher-quality TTS backend (e.g. ElevenLabs) is a Phase-2 upgrade behind the same narration-toggle interface, not a rebuild.
 - **Code execution sandbox:** *all* generated scene code — not just the "escape hatch" — runs inside a sandboxed `<iframe sandbox="allow-scripts">` (no `allow-same-origin`), talking to the host app over `postMessage`. This is stricter than D4's letter ("sandboxed escape hatch") but is the right call given D1 (any topic) makes the app a public arbitrary-code-generation surface. See [§7](#7-security--safety).
 - **Engine count for MVP:** two engines, not four. **p5.js/canvas** (primary, general-purpose) and **SVG+DOM+KaTeX** (text/math/diagram-heavy beats). GSAP/Framer Motion and the free-form escape hatch are Phase-2 additions — D4 already calls this phasing out explicitly ("MVP leans on one primary engine plus SVG; other engines... come later"), this plan just makes the cut line concrete.
+- **Structured outputs, not validate-and-retry:** the plan-stage call uses the Anthropic API's native structured outputs (`output_config.format` with a JSON schema — in the Python SDK, `client.messages.parse()` against the Pydantic lesson-spec models directly). The API guarantees schema-valid JSON, so retries are reserved for *semantic* problems (bad pedagogy, wrong beat count), not JSON shape. This deletes a whole class of parsing/retry code the v1 plan assumed.
+- **Prompt caching is designed in, not bolted on:** every per-beat generation call shares a large stable prefix (pedagogy system prompt + primitive few-shot examples) with only the beat-specific intent varying at the end. With a `cache_control` breakpoint after the stable prefix, all N beat calls after the first read that prefix from cache at ~0.1× input price. This only works if the prompt layout is stable-first/volatile-last from day one — retrofitting it means restructuring every prompt, so it's locked now. (Corollary: no timestamps, request IDs, or per-lesson content in the system prompt.)
+- **Model roles (concrete, revisit with Phase-3 cost data):** `claude-opus-4-8` for the plan call and vision self-critique (correctness-critical, low volume per lesson); `claude-opus-4-8` for per-beat scene generation initially, with `claude-sonnet-5` as the measured fallback if per-lesson cost runs high (near-Opus on coding tasks at a lower price point); `claude-haiku-4-5` for auto-fix regeneration (it's repairing a known error against a known message, not doing creative generation). Model IDs and pricing verified against current API docs — see §14.
+- **Mock generation mode:** the backend ships a `MOCK_GENERATION=1` mode that serves the Phase-1 fixture lessons through the real API/SSE surface instead of calling Anthropic. Frontend development, E2E tests, and demos of the player itself cost $0 and run offline. Cheap to build in Phase 3 (the fixtures already exist from Phase 1), expensive to want later.
 
 ---
 
@@ -193,13 +198,15 @@ No `/api/tts` endpoint in MVP (browser `SpeechSynthesis` handles it client-side 
 
 ### 5.2 Generation pipeline
 
-1. **Plan call** (Claude, text): topic + params + pedagogy-principles system prompt → structured outline JSON (Pydantic-validated; on schema-invalid output, retry the call up to 2x with the validation error appended before giving up and surfacing a lesson-level error).
-2. **Per-beat call** (Claude, text): outline beat (`intent`, primitive tag, engine) + primitive-specific few-shot template → scene code string.
-3. **Render/auto-fix check** (Playwright, headless Chromium): load the sandboxed iframe runtime with the generated code; catch JS execution errors and console errors within a timeout (e.g. 5s). On failure, feed the error text back to Claude for one regeneration attempt (max 2 auto-fix attempts total).
-4. **Vision self-critique** (Claude, vision): screenshot the rendered beat at 2–3 points (initial state, and after simulating a manipulable/interaction if present) → Claude compares against `intent` + narration text → `{ pass, feedback }`. On fail, regenerate scene code once more with the critique feedback appended (max 1 critique-triggered retry).
+1. **Plan call** (`claude-opus-4-8`, structured outputs): topic + params + pedagogy-principles system prompt → whole-lesson outline. The response is schema-enforced by the API (`client.messages.parse()` against the Pydantic outline models), so it cannot be malformed JSON. One retry is reserved for *semantic* failures the schema can't express (beat count outside the duration band, empty intents) — appended as feedback, then give up and surface a lesson-level error.
+2. **Per-beat call** (`claude-opus-4-8`, text): outline beat (`intent`, primitive tag, engine) + primitive-specific few-shot template → scene code string. Prompt layout is cache-optimized (§1): stable system prompt + few-shots first with a `cache_control` breakpoint, beat-specific content last — beat calls 2..N read the shared prefix from cache.
+3. **Render/auto-fix check** (Playwright, headless Chromium): load the sandboxed iframe runtime with the generated code; catch JS execution errors and console errors within a timeout (e.g. 5s). On failure, feed the error text + broken code to `claude-haiku-4-5` for a repair attempt (max 2 auto-fix attempts total) — repair is constrained, well-specified work that doesn't need the big model.
+4. **Vision self-critique** (`claude-opus-4-8`, vision): screenshot the rendered beat at 2–3 points (initial "settled" state, and after simulating a manipulable/interaction if present) → Claude compares against `intent` + narration text → `{ pass, feedback }` (also a structured output). On fail, regenerate scene code once more with the critique feedback appended (max 1 critique-triggered retry). **Screenshot timing:** the runtime bridge's `ready` signal marks when the scene has reached its initial settled state — the validator screenshots on `ready`, not on page-load, so continuously-animating scenes are captured at a deliberate, representative frame. This makes "emit `ready` at a representative state" part of the scene-code contract (§6.2), enforced by the few-shot examples.
 5. **Graceful degradation:** if a beat still fails after all retries, replace it with an auto-generated plain-text+KaTeX fallback beat (narration text is always present regardless, so this is a real fallback, not an empty state) and mark `status: "degraded"`. The lesson always completes; the learner is never blocked by a single bad beat.
 
 Beats after #1 generate **sequentially in the background** for MVP (not fully parallel) — this bounds concurrent Anthropic API spend per lesson and matches D8's "just-in-time" framing. Parallel generation of beats 2+ (once beat 1 is delivered) is a Phase-2 optimization once cost/latency data from real usage justifies it.
+
+**Browser resources:** validation runs against a single long-lived Chromium instance (fresh browser *context* per check, not fresh browser), guarded by an asyncio semaphore (e.g. max 2–3 concurrent render checks). Headless Chromium is the backend's dominant memory consumer — this cap is what makes the single-instance deployment (§13) viable, and it's also a natural backpressure mechanism under load.
 
 ### 5.3 State management
 
@@ -210,6 +217,11 @@ Beats after #1 generate **sequentially in the background** for MVP (not fully pa
 - IP-based token bucket (e.g. `slowapi`) capping lessons/hour per IP.
 - Topic string length cap (e.g. 300 chars) and basic empty/gibberish rejection before it reaches the plan call.
 - Hard timeout + max-retry ceiling per beat (bounds worst-case Anthropic spend per lesson — see §14 for the actual budget numbers).
+- Global concurrency cap on render-check work via the Playwright semaphore (§5.2) — the API accepts new lessons but beats queue behind the semaphore rather than exhausting memory.
+
+### 5.5 Observability — the generation trace log
+
+Quality iteration on prompts is the core ongoing work of this project (§4), and it's impossible without data. Every generation attempt logs a structured record server-side: lesson ID, topic, beat index, primitive tag, engine, model used, attempt number, outcome (`ok` / `render_fail` / `critique_fail` / `degraded`), the error text or critique feedback on failure, token usage, and wall-clock latency. Plain JSONL to disk/stdout is fine for MVP (picked up by the host's log drain) — no observability stack needed. This is what turns "beat 4 of the entropy lesson looked wrong" into "the *simulation* primitive fails critique 40% of the time; fix its few-shots." Also the raw data for the §14 cost model. Note: topic strings are user input — keep log retention short and don't log anything else user-identifying beyond the rate-limit IP.
 
 ---
 
@@ -230,11 +242,31 @@ Iframe → host: `{ type: "ready" }`, `{ type: "error", message }`.
 
 Kept intentionally minimal for MVP — no "advance hint" or scene-driven pacing signals yet (self-paced means the *learner* clicks, the scene never auto-advances, so the protocol doesn't need a completion event beyond `ready`).
 
+**The scene-code contract (Phase-1 deliverable, frozen before any prompts are written):** the exact API surface that generated code targets — the shape every few-shot example, the validator, and the client renderer all depend on. Sketch (finalized in Phase 1):
+
+```js
+// What a generated scene module must export, per engine:
+export function setup(stage, params) { ... }        // stage: engine-provided handle (p5 instance / SVG root); params: current manipulable values
+export function onParamChange(name, value) { ... }  // optional; called on manipulable interaction
+// The engine runtime wraps these: it owns the p5/SVG boilerplate, calls setup(),
+// emits `ready` after the first settled frame, and routes updateParam → onParamChange.
+```
+
+Generated code never touches `postMessage`, the DOM outside its stage, or engine bootstrapping — the hand-written runtime owns all of that. Keeping the generated surface this small is both a correctness lever (less for the LLM to get wrong) and a security lever (less API to abuse). Changing this contract after Phase 4 means regenerating every few-shot, so it gets a deliberate design pass, not an incidental one.
+
 ### 6.3 State machine (informal)
 
 `idle → submitting → outline_ready → (per beat: pending → generating → ready|degraded) → beat[0] shown → learner clicks next → beat[1] shown (or "preparing…" if not ready yet) → ... → lesson_complete`
 
 Back navigation is always allowed to any already-ready beat (no regeneration). This is a simple linear array with a cursor, not a general graph — no need for anything heavier for MVP.
+
+### 6.4 Accessibility (MVP-scoped, concrete)
+
+Not a Phase-9 afterthought — three items are cheap now and expensive later:
+
+- **Keyboard advance:** `Space`/`→` advance, `←` goes back, focus never trapped inside the scene iframe. Click-to-advance is the product; keyboard-to-advance is the same product for keyboard users.
+- **`prefers-reduced-motion`:** the engine runtimes expose this to scenes as a param, and the few-shot examples demonstrate honoring it (settle to the final state without continuous animation). An animation-heavy learning app that ignores this setting excludes exactly the users it claims to serve.
+- **Narration text as the accessible channel:** narration text lives in the DOM (not inside the canvas), in an `aria-live="polite"` region on beat change — screen readers get the full lesson content even though the animation itself is visual.
 
 ---
 
@@ -294,7 +326,8 @@ Ideascope/
 | Backend framework | FastAPI (Python) | confirmed per README's working assumption |
 | Validation schemas | Pydantic (backend), hand-mirrored TS types (frontend) | |
 | Headless render/screenshot | Playwright (Chromium) | shared by render-check and vision-critique screenshot steps |
-| LLM | Claude via Anthropic API (text + vision) | per D10 |
+| LLM | Claude via Anthropic API (text + vision) | per D10; model roles in §1, pricing in §14 |
+| LLM output shaping | API structured outputs (`client.messages.parse()` / `output_config.format`) | schema-enforced JSON, no parse-retry code |
 | TTS (MVP) | Browser `SpeechSynthesis` | free, zero backend latency; upgrade path in Phase 2 |
 | Streaming transport | Server-Sent Events | one-directional server→client is sufficient |
 | Session state (MVP) | In-process dict, TTL-evicted | no DB per D9 |
@@ -338,9 +371,9 @@ Ideascope/
 Phased by deliverable, not calendar — but rough pacing assumes a solo, part-time, semester-length effort. Each phase lists its exit criteria; don't start the next phase until the current one's criteria are met, since later phases assume earlier contracts (especially the lesson spec) are stable.
 
 - **Phase 0 — Foundations.** Repo scaffolding (this plan + README, done by this commit), Vercel/Fly.io accounts, Anthropic API key provisioned, base CI (lint/format on push), MIT license added. *Exit: empty-but-deployed "hello world" frontend and backend, CI green.*
-- **Phase 1 — Lesson spec.** Finalize the Pydantic models and mirrored TS types from §3; write 1–2 **hand-authored** example lessons as fixtures (no LLM yet) to prove the schema is expressive enough for a real lesson. *Exit: a hand-written fixture lesson JSON that covers both engines and at least one manipulable, validated against the schema.*
+- **Phase 1 — Lesson spec + scene contract.** Finalize the Pydantic models and mirrored TS types from §3, **and freeze the scene-code runtime contract from §6.2** (the `setup`/`onParamChange` surface every few-shot will target); write 1–2 **hand-authored** example lessons as fixtures (no LLM yet) to prove both the schema and the contract are expressive enough for a real lesson. *Exit: a hand-written fixture lesson JSON that covers both engines and at least one manipulable, validated against the schema, with scene code written against the frozen contract.*
 - **Phase 2 — Static player shell.** Build the Lesson Player, click-to-advance state machine, and both engine runtimes (including the sandboxed-iframe postMessage bridge) against the Phase-1 fixtures only — no backend calls. This proves the rendering/interaction model in isolation before any generation complexity is layered on. *Exit: the fixture lessons play end-to-end in the browser, click-to-advance and manipulables both work.*
-- **Phase 3 — Backend skeleton + plan call.** FastAPI service, `POST /api/lessons`, plan-stage prompt + Pydantic-validated outline output. *Exit: a real topic produces a schema-valid outline reliably (manually spot-check ~10 varied topics).*
+- **Phase 3 — Backend skeleton + plan call.** FastAPI service, `POST /api/lessons`, plan-stage prompt with structured outputs (§5.2), mock generation mode (§1) serving the Phase-1 fixtures, generation trace log (§5.5) from the first real call onward. *Exit: a real topic produces a schema-valid outline reliably (manually spot-check ~10 varied topics); the frontend runs full lessons against mock mode.*
 - **Phase 4 — Per-beat generation.** Per-beat Claude calls, primitive-vocabulary prompt templates + few-shots (§4) per engine. *Exit: generated beats render (even if not yet validated) for the same ~10 topics.*
 - **Phase 5 — Validation pipeline.** Playwright render/auto-fix loop, vision self-critique, bounded retries, graceful degradation fallback. *Exit: broken generations are caught and either fixed or degraded gracefully — no broken beat ever reaches the player in manual testing across the topic set.*
 - **Phase 6 — JIT delivery.** SSE streaming, in-memory `LessonState` store, frontend "preparing…" states wired to real backend timing. *Exit: full generate-and-play flow works end-to-end from the real UI, beat 1 arrives fast, later beats stream in while the learner reads.*
@@ -364,7 +397,9 @@ Phased by deliverable, not calendar — but rough pacing assumes a solo, part-ti
 ## 13. Deployment & CI/CD
 
 - **Frontend:** Vercel, auto-deploy from `main` (or the working branch during development), preview deployments per PR.
-- **Backend:** Dockerized FastAPI, deployed to Fly.io or Render. Single instance for MVP (consistent with the in-memory state decision in §5.3).
+- **Backend:** Dockerized FastAPI, deployed to Fly.io or Render. Single instance for MVP (consistent with the in-memory state decision in §5.3). **The image includes headless Chromium for Playwright** — use the official Playwright Python base image; expect ~1.5 GB image and size the instance at **≥1 GB RAM** (Chromium is the dominant consumer; the §5.2 semaphore keeps it bounded). This rules out the smallest free-tier instances — budget for one small paid instance.
+- **CORS:** backend allowlists exactly the Vercel production domain + preview-deployment pattern; no wildcard origin (the API is unauthenticated, so CORS + rate limiting are the only abuse dampeners).
+- **SSE keepalives:** the stream endpoint emits a comment/heartbeat event every ~15s so proxies and the hosting platform's idle-timeout don't silently kill long-lived connections while the learner reads; the client treats a dropped stream as reconnect-then-`GET /api/lessons/{id}` (already in §5.1).
 - **CI (GitHub Actions):** on every PR — lint + typecheck (frontend), lint + type-check via `mypy`/`ruff` (backend), unit tests both sides. The generation-quality regression suite (§12) runs on a schedule (e.g. nightly), not per-PR, since it costs real Anthropic API spend.
 - **Secrets:** Anthropic API key stored in the hosting platform's secret manager, injected as an env var to the backend only — never present in any frontend build or client bundle.
 - **Open source:** repo public from the start; MIT license added end of Phase 0; a short CONTRIBUTING note can be added later if external interest materializes (not a priority — this is a portfolio piece, not seeking contributors).
@@ -373,11 +408,22 @@ Phased by deliverable, not calendar — but rough pacing assumes a solo, part-ti
 
 ## 14. Cost & latency budget
 
-Rough envelope to sanity-check before build, refine with real numbers once Phase 3–5 are live:
+Envelope to sanity-check before build; the §5.5 trace log replaces these estimates with measured numbers once Phase 3–5 are live.
 
-- **Per lesson, worst case:** 1 plan call + N beat calls (N ≈ 3–14 per duration preset) × up to (1 initial + 2 auto-fix + 1 critique-retry) generations, plus N vision-critique calls. Budget guardrails (§5.4) exist specifically to bound this worst case — most beats should pass on the first or second attempt in practice.
-- **Latency target:** outline + beat 1 ready within a few seconds of submit (this is the number that matters for demo feel — everything after beat 1 happens while the learner is reading/interacting, so it's hidden by the self-paced format per D8/D9's design intent).
-- **Mitigation if real costs run high:** tighten retry ceilings first (cheapest lever), then consider a smaller/faster model for the auto-fix regeneration step specifically (it's fixing a known error, not creative generation) while keeping the primary Claude model for plan/beat/critique calls.
+**Current pricing** (per million tokens, from Anthropic docs as of mid-2026 — re-verify at Phase 3):
+
+| Model | Role here | Input | Output |
+|---|---|---|---|
+| `claude-opus-4-8` | plan, per-beat scene gen, vision critique | $5 | $25 |
+| `claude-sonnet-5` | cost fallback for scene gen if needed | $3 ($2 intro through Aug 2026) | $15 ($10 intro) |
+| `claude-haiku-4-5` | auto-fix repair | $1 | $5 |
+
+Prompt caching: cache reads ≈ 0.1× input price, writes ≈ 1.25× — with the stable-prefix prompt layout (§1), all but the first per-beat call read the shared system prompt + few-shots from cache.
+
+**Order-of-magnitude per-lesson estimate** (medium preset, ~7 beats, everything passing first try): 1 plan call (~2K in / ~2K out) + 7 beat calls (~5K in each, mostly cache-read after the first / ~1.5K out each) + 7 vision critiques (~2K in each incl. screenshot / ~0.3K out each). Output dominates: roughly 15K output tokens ≈ **$0.40 on Opus 4.8**, with cached input adding little. With realistic retry rates, budget **~$0.50–1.50 per lesson**; the retry ceilings (§5.4) cap the worst case at roughly 2–3× the clean-run cost. Entirely sustainable for a demo/portfolio app at tens of lessons/day; the rate limiter is what protects against someone scripting hundreds.
+
+- **Latency target:** outline + beat 1 ready within a few seconds of submit (this is the number that matters for demo feel — everything after beat 1 happens while the learner is reading/interacting, so it's hidden by the self-paced format per D8/D9's design intent). The plan call streams; beat-1 generation starts as soon as the outline's first beat is parseable.
+- **Mitigation levers if measured costs run high, in order:** tighten retry ceilings (cheapest); move per-beat scene generation from Opus to `claude-sonnet-5` (§1 already provisions this); shrink the few-shot library per primitive (hurts quality — last resort).
 
 ---
 
@@ -393,6 +439,8 @@ Rough envelope to sanity-check before build, refine with real numbers once Phase
 | Param sprawl (D6) | §6.1 topic-only is one click; optional params collapsed by default |
 | **New: arbitrary code execution surface (D1+D2)** | §7 sandbox/CSP/denylist/timeout defenses |
 | **New: single-instance in-memory state is a scaling ceiling** | Explicitly accepted for MVP (§5.3); documented Redis swap path if ever needed |
+| **New: headless Chromium memory pressure on a small instance** | §5.2 single browser + semaphore; §13 sizes the instance for it |
+| **New: prompt/few-shot drift breaks the scene contract** | §6.2 freezes the contract in Phase 1, before any prompt is written; §5.5 trace log catches quality regressions per primitive |
 
 ---
 
@@ -418,3 +466,17 @@ Nothing blocking — these are fine to leave open until they matter:
 - Whether to buy a custom domain before the internship application round (§1) — pure polish, not functional.
 - Whether Phase 11 stretch work should prioritize the learning-outcome eval or a third rendering engine — decide based on how Phase 0–10 actually goes and which is more impressive to demo live.
 - Whether the generation-quality regression suite's fixed topic set needs to grow — revisit once Phase 5 is live and real failure patterns are visible.
+- Whether per-beat scene generation stays on `claude-opus-4-8` or moves to `claude-sonnet-5` — decide from measured quality + cost in the §5.5 trace log, not up front.
+
+---
+
+## 18. Revision history
+
+**v2 (2026-07-19)** — full revision pass before implementation. Changes from v1:
+
+- *API modernization:* plan-stage JSON now uses the Anthropic API's native structured outputs (schema-enforced; parse-retry code deleted from the design); prompt caching designed into the per-beat prompt layout from day one; concrete model roles pinned (`claude-opus-4-8` / `claude-sonnet-5` fallback / `claude-haiku-4-5` for repairs) with current pricing in §14.
+- *New engineering commitments:* scene-code runtime contract is now a frozen Phase-1 deliverable (§6.2); screenshot timing defined via the `ready` signal (§5.2); single-browser + semaphore policy for Playwright (§5.2); generation trace log (§5.5); mock generation mode (§1, Phase 3); SSE keepalives, CORS policy, and Chromium-aware instance sizing (§13); concrete MVP accessibility scope (§6.4).
+- *Cost model:* replaced the qualitative envelope with an order-of-magnitude per-lesson estimate (~$0.50–1.50) from current pricing.
+- *Risk register:* added Chromium memory pressure and scene-contract drift.
+
+**v1 (2026-07-19)** — initial plan.
