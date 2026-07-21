@@ -122,7 +122,12 @@ Plus a **TTS service** for narration audio on demand.
 
 The **core spec (D1–D12) is complete**, and the project is named **Ideascope** (chosen over "Primer" and "Unfurl," both already used by close AI-learning competitors).
 
-The **build plan (`docs/PLAN.md`) is drafted** (v2), resolving the remaining open decisions below. **Phase 0 (Foundations) is complete**: the repo is scaffolded with a building React/Vite frontend and a FastAPI backend, CI (lint + typecheck + test + build for both), and an MIT license. The hello-world loop is verified end-to-end — the frontend reaches the backend health endpoint in a real browser. Next up is Phase 1 (lesson spec + scene-code contract).
+The **build plan (`docs/PLAN.md`) is drafted** (v2), resolving the remaining open decisions below. Progress:
+
+- **Phase 0 (Foundations) — done.** Repo scaffolded with a building React/Vite frontend and FastAPI backend, CI (lint + typecheck + test + build for both), MIT license. Hello-world loop verified end-to-end in a real browser.
+- **Phase 1 (Lesson spec + scene contract) — done.** Pydantic lesson-spec models + hand-mirrored TS types, the scene-code runtime contract frozen in [`docs/SCENE_CONTRACT.md`](docs/SCENE_CONTRACT.md), and two hand-authored fixture lessons (canvas + SVG) that validate against the schema.
+
+Next up is Phase 2 (static player shell — the lesson player and both engine runtimes, against the fixtures).
 
 Remaining open decisions (resolved in the plan, revisit if circumstances change):
 

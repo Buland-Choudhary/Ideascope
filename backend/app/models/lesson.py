@@ -1,0 +1,190 @@
+"""The lesson spec — the structured JSON contract for a generated lesson.
+
+Mirrors docs/PLAN.md §3. The frontend keeps a hand-written TypeScript mirror of
+these models in ``frontend/src/types/lesson.ts`` (kept in sync by hand for MVP,
+per §3). JSON is emitted in ``camelCase`` (via the alias generator) so the wire
+format matches the TypeScript types and the §3 spec; Python code uses
+``snake_case`` field names.
+"""
+
+from enum import StrEnum
+from typing import Self
+
+from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic.alias_generators import to_camel
+
+
+class CamelModel(BaseModel):
+    """Base model: snake_case in Python, camelCase on the wire."""
+
+    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True)
+
+
+# --- Enums -----------------------------------------------------------------
+
+
+class Duration(StrEnum):
+    SHORT = "short"
+    MEDIUM = "medium"
+    LONG = "long"
+
+
+class Difficulty(StrEnum):
+    BEGINNER = "beginner"
+    INTERMEDIATE = "intermediate"
+    ADVANCED = "advanced"
+
+
+class Tone(StrEnum):
+    PLAYFUL = "playful"
+    FORMAL = "formal"
+    NEUTRAL = "neutral"
+
+
+class Engine(StrEnum):
+    """MVP engine set (docs/PLAN.md §1). ``motion``/``sandbox`` are Phase 2."""
+
+    CANVAS = "canvas"
+    SVG = "svg"
+
+
+class Primitive(StrEnum):
+    """The vetted animation primitive vocabulary (docs/PLAN.md §4)."""
+
+    TIMELINE = "timeline"
+    PLOT = "plot"
+    GEOMETRIC_TRANSFORM = "geometric_transform"
+    PROCESS_FLOW = "process_flow"
+    COMPARISON = "comparison"
+    PART_TO_WHOLE = "part_to_whole"
+    SIMULATION = "simulation"
+
+
+class ManipulableType(StrEnum):
+    SLIDER = "slider"
+    STEPPER = "stepper"
+    TOGGLE = "toggle"
+    SELECT = "select"
+
+
+class BeatStatus(StrEnum):
+    PENDING = "pending"
+    GENERATING = "generating"
+    VALIDATING = "validating"
+    READY = "ready"
+    FAILED = "failed"
+    DEGRADED = "degraded"
+
+
+# --- Duration → target beat band (docs/PLAN.md D11) ------------------------
+
+BEAT_BANDS: dict[Duration, tuple[int, int]] = {
+    Duration.SHORT: (3, 5),
+    Duration.MEDIUM: (6, 9),
+    Duration.LONG: (10, 14),
+}
+
+
+# --- Models ----------------------------------------------------------------
+
+
+class LessonParams(CamelModel):
+    duration: Duration = Duration.MEDIUM
+    difficulty: Difficulty | None = None
+    prior_knowledge: str | None = None
+    tone: Tone | None = None
+    # Reserved; unused pre-Phase-2 (docs/PLAN.md §3).
+    language: str | None = None
+
+
+class Outline(CamelModel):
+    title: str
+    summary: str
+    target_beat_count: int = Field(ge=1, le=20)
+
+
+class Manipulable(CamelModel):
+    id: str
+    label: str
+    type: ManipulableType
+    # Key the scene code reads from its ``params`` object (docs/SCENE_CONTRACT.md).
+    param: str
+    default: bool | int | float | str
+    min: float | None = None
+    max: float | None = None
+    step: float | None = None
+    options: list[str] | None = None
+
+    @model_validator(mode="after")
+    def check_shape(self) -> Self:
+        if self.type in (ManipulableType.SLIDER, ManipulableType.STEPPER):
+            if self.min is None or self.max is None:
+                raise ValueError(f"{self.type.value} requires 'min' and 'max'")
+            if self.min >= self.max:
+                raise ValueError("'min' must be less than 'max'")
+            if not isinstance(self.default, (int, float)) or isinstance(self.default, bool):
+                raise ValueError(f"{self.type.value} 'default' must be numeric")
+        if self.type == ManipulableType.SELECT:
+            if not self.options:
+                raise ValueError("select requires a non-empty 'options' list")
+            if self.default not in self.options:
+                raise ValueError("select 'default' must be one of 'options'")
+        if self.type == ManipulableType.TOGGLE and not isinstance(self.default, bool):
+            raise ValueError("toggle 'default' must be a boolean")
+        return self
+
+
+class Narration(CamelModel):
+    # Always present (docs/PLAN.md D5); TTS reads this client-side in MVP.
+    text: str
+
+
+class Scene(CamelModel):
+    # Engine-specific ES-module source, written against docs/SCENE_CONTRACT.md.
+    # (The v1 plan sketched an ``entryPoint`` field; dropped when the contract
+    # was frozen — every scene uses a fixed ``export default``. See §3 note.)
+    code: str
+
+
+class BeatValidation(CamelModel):
+    render_ok: bool
+    auto_fix_attempts: int = 0
+    critique_pass: bool | None = None
+    critique_feedback: str | None = None
+
+
+class Beat(CamelModel):
+    id: str
+    index: int = Field(ge=0)
+    # Pedagogical goal; internal/debug, graded against by the vision critique.
+    intent: str
+    primitive: Primitive
+    engine: Engine
+    narration: Narration
+    scene: Scene
+    manipulables: list[Manipulable] = Field(default_factory=list)
+    status: BeatStatus = BeatStatus.READY
+    validation: BeatValidation | None = None
+
+    @model_validator(mode="after")
+    def check_manipulable_params_unique(self) -> Self:
+        params = [m.param for m in self.manipulables]
+        if len(params) != len(set(params)):
+            raise ValueError("manipulable 'param' keys must be unique within a beat")
+        return self
+
+
+class Lesson(CamelModel):
+    id: str
+    topic: str
+    params: LessonParams
+    outline: Outline
+    beats: list[Beat]
+
+    @model_validator(mode="after")
+    def check_beat_indices(self) -> Self:
+        expected = list(range(len(self.beats)))
+        actual = [b.index for b in self.beats]
+        if actual != expected:
+            raise ValueError(f"beat indices must be contiguous from 0; got {actual}")
+        return self

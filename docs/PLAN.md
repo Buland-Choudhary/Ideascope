@@ -136,7 +136,8 @@ Beat {
   manipulables?: Manipulable[],
   scene: {
     code: string,                 // engine-specific source, validated & sandboxed
-    entryPoint: string            // exported function name the runtime bridge calls
+    // (entryPoint dropped when the scene contract was frozen in Phase 1 — every
+    //  scene uses a fixed `export default`; see docs/SCENE_CONTRACT.md)
   },
   status: "pending" | "generating" | "validating" | "ready" | "failed" | "degraded",
   validation?: {
@@ -293,7 +294,7 @@ Ideascope/
 ├── LICENSE                    # MIT, added end of Phase 0
 ├── docs/
 │   ├── PLAN.md                 # this file
-│   └── ARCHITECTURE.md         # deeper technical notes, added as Phase 1+ produces them
+│   └── SCENE_CONTRACT.md       # frozen scene-code runtime contract (Phase 1)
 ├── frontend/                   # React + TS + Vite (Phase 2+)
 │   ├── src/
 │   │   ├── components/         # TopicForm, LessonPlayer, ManipulableControls, ...
@@ -307,7 +308,9 @@ Ideascope/
 │   │   ├── generation/           # plan stage, per-beat stage, prompt templates + few-shots
 │   │   ├── validation/            # render/auto-fix, vision critique
 │   │   ├── models/                 # Pydantic lesson spec
+│   │   ├── fixtures/                 # hand-authored fixture lessons (Phase 1) + loader
 │   │   └── state/                   # in-memory LessonState store
+│   ├── scripts/                    # build_fixtures.py (authors fixtures → JSON)
 │   └── ...
 └── .github/workflows/          # CI (Phase 0/10)
 ```
@@ -370,8 +373,8 @@ Ideascope/
 
 Phased by deliverable, not calendar — but rough pacing assumes a solo, part-time, semester-length effort. Each phase lists its exit criteria; don't start the next phase until the current one's criteria are met, since later phases assume earlier contracts (especially the lesson spec) are stable.
 
-- **Phase 0 — Foundations.** Repo scaffolding (this plan + README, done by this commit), Vercel/Fly.io accounts, Anthropic API key provisioned, base CI (lint/format on push), MIT license added. *Exit: empty-but-deployed "hello world" frontend and backend, CI green.*
-- **Phase 1 — Lesson spec + scene contract.** Finalize the Pydantic models and mirrored TS types from §3, **and freeze the scene-code runtime contract from §6.2** (the `setup`/`onParamChange` surface every few-shot will target); write 1–2 **hand-authored** example lessons as fixtures (no LLM yet) to prove both the schema and the contract are expressive enough for a real lesson. *Exit: a hand-written fixture lesson JSON that covers both engines and at least one manipulable, validated against the schema, with scene code written against the frozen contract.*
+- **Phase 0 — Foundations. ✅ DONE.** Repo scaffolding, base CI (lint/typecheck/test/build for both apps), MIT license. Frontend (React/Vite/Tailwind) and backend (FastAPI) both build and pass all checks; hello-world loop verified end-to-end in a real browser. *(Deferred, non-blocking: actual Vercel/Fly.io deploy + Anthropic key provisioning — needs account credentials; deploy configs are in place.)*
+- **Phase 1 — Lesson spec + scene contract. ✅ DONE.** Pydantic models (`backend/app/models/lesson.py`) with cross-field validation + camelCase wire format; hand-mirrored TS types (`frontend/src/types/lesson.ts`); the scene-code runtime contract **frozen** in `docs/SCENE_CONTRACT.md`; two hand-authored fixtures (sine wave / canvas + water cycle / svg) covering both engines and slider/stepper/toggle manipulables, built via `scripts/build_fixtures.py`. *Exit met: fixtures validate against the schema (tests), all 6 scene modules verified as valid ES-module JS via `node --check`, scene code written against the frozen contract.*
 - **Phase 2 — Static player shell.** Build the Lesson Player, click-to-advance state machine, and both engine runtimes (including the sandboxed-iframe postMessage bridge) against the Phase-1 fixtures only — no backend calls. This proves the rendering/interaction model in isolation before any generation complexity is layered on. *Exit: the fixture lessons play end-to-end in the browser, click-to-advance and manipulables both work.*
 - **Phase 3 — Backend skeleton + plan call.** FastAPI service, `POST /api/lessons`, plan-stage prompt with structured outputs (§5.2), mock generation mode (§1) serving the Phase-1 fixtures, generation trace log (§5.5) from the first real call onward. *Exit: a real topic produces a schema-valid outline reliably (manually spot-check ~10 varied topics); the frontend runs full lessons against mock mode.*
 - **Phase 4 — Per-beat generation.** Per-beat Claude calls, primitive-vocabulary prompt templates + few-shots (§4) per engine. *Exit: generated beats render (even if not yet validated) for the same ~10 topics.*

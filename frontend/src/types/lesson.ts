@@ -1,0 +1,98 @@
+/**
+ * TypeScript mirror of the backend lesson spec.
+ *
+ * Hand-kept in sync with `backend/app/models/lesson.py` (docs/PLAN.md §3 accepts
+ * manual mirroring for MVP). The wire format is camelCase — matching the JSON the
+ * backend emits via its alias generator. Scene `code` strings target the frozen
+ * contract in docs/SCENE_CONTRACT.md.
+ */
+
+export type Duration = "short" | "medium" | "long";
+export type Difficulty = "beginner" | "intermediate" | "advanced";
+export type Tone = "playful" | "formal" | "neutral";
+
+/** MVP engine set (docs/PLAN.md §1); "motion" | "sandbox" arrive in Phase 2. */
+export type Engine = "canvas" | "svg";
+
+export type Primitive =
+  | "timeline"
+  | "plot"
+  | "geometric_transform"
+  | "process_flow"
+  | "comparison"
+  | "part_to_whole"
+  | "simulation";
+
+export type ManipulableType = "slider" | "stepper" | "toggle" | "select";
+
+export type BeatStatus =
+  | "pending"
+  | "generating"
+  | "validating"
+  | "ready"
+  | "failed"
+  | "degraded";
+
+export interface LessonParams {
+  duration: Duration;
+  difficulty?: Difficulty | null;
+  priorKnowledge?: string | null;
+  tone?: Tone | null;
+  /** Reserved; unused pre-Phase-2. */
+  language?: string | null;
+}
+
+export interface Outline {
+  title: string;
+  summary: string;
+  targetBeatCount: number;
+}
+
+export interface Manipulable {
+  id: string;
+  label: string;
+  type: ManipulableType;
+  /** Key the scene reads from `ctx.params` (docs/SCENE_CONTRACT.md §3). */
+  param: string;
+  default: number | string | boolean;
+  min?: number | null;
+  max?: number | null;
+  step?: number | null;
+  options?: string[] | null;
+}
+
+export interface Narration {
+  text: string;
+}
+
+export interface Scene {
+  code: string;
+}
+
+export interface BeatValidation {
+  renderOk: boolean;
+  autoFixAttempts: number;
+  critiquePass?: boolean | null;
+  critiqueFeedback?: string | null;
+}
+
+export interface Beat {
+  id: string;
+  index: number;
+  intent: string;
+  primitive: Primitive;
+  engine: Engine;
+  narration: Narration;
+  scene: Scene;
+  manipulables: Manipulable[];
+  status: BeatStatus;
+  validation?: BeatValidation | null;
+}
+
+export interface Lesson {
+  id: string;
+  topic: string;
+  params: LessonParams;
+  outline: Outline;
+  beats: Beat[];
+}
