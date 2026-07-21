@@ -8,6 +8,32 @@ Ideascope is an AI web app that turns any **topic** (plus optional parameters li
 
 The full step-by-step build plan lives in [`docs/PLAN.md`](docs/PLAN.md) — start there before writing code.
 
+## Repository layout
+
+```
+Ideascope/
+├── docs/PLAN.md        # the phased implementation plan (source of truth for how/when)
+├── frontend/           # React + TypeScript + Vite lesson player (see frontend/README.md)
+├── backend/            # FastAPI generation service (see backend/README.md)
+└── .github/workflows/  # CI: lint, typecheck, test, build on every PR
+```
+
+## Quickstart (local dev)
+
+Two terminals — backend and frontend:
+
+```bash
+# terminal 1 — backend (http://localhost:8000)
+cd backend && uv sync && uv run uvicorn app.main:app --reload
+
+# terminal 2 — frontend (http://localhost:5173)
+cd frontend && npm install && npm run dev
+```
+
+The frontend calls the backend's `/api/health` on load and shows the connection
+status. Per-app details, checks, and configuration are in
+[`frontend/README.md`](frontend/README.md) and [`backend/README.md`](backend/README.md).
+
 ---
 
 ## What it is — and what it isn't
@@ -96,7 +122,7 @@ Plus a **TTS service** for narration audio on demand.
 
 The **core spec (D1–D12) is complete**, and the project is named **Ideascope** (chosen over "Primer" and "Unfurl," both already used by close AI-learning competitors).
 
-The **build plan (`docs/PLAN.md`) is now drafted**, resolving the remaining open decisions below. It is the next thing to review before implementation starts.
+The **build plan (`docs/PLAN.md`) is drafted** (v2), resolving the remaining open decisions below. **Phase 0 (Foundations) is complete**: the repo is scaffolded with a building React/Vite frontend and a FastAPI backend, CI (lint + typecheck + test + build for both), and an MIT license. The hello-world loop is verified end-to-end — the frontend reaches the backend health endpoint in a real browser. Next up is Phase 1 (lesson spec + scene-code contract).
 
 Remaining open decisions (resolved in the plan, revisit if circumstances change):
 
