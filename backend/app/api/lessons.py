@@ -9,6 +9,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
 from app.config import get_settings
+from app.generation.beat import BeatGenerationError
 from app.generation.plan import PlanGenerationError
 from app.generation.service import GenerationUnavailableError, generate_lesson
 from app.models import Difficulty, Duration, Lesson, LessonParams, Tone
@@ -38,5 +39,5 @@ def create_lesson(request: GenerateLessonRequest) -> Lesson:
         return generate_lesson(settings, topic=request.topic.strip(), params=params)
     except GenerationUnavailableError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
-    except PlanGenerationError as exc:
+    except (PlanGenerationError, BeatGenerationError) as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc

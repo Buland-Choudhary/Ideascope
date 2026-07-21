@@ -29,3 +29,14 @@ class LessonPlan(BaseModel):
     title: str = Field(description="A concise lesson title.")
     summary: str = Field(description="A one- or two-sentence summary of the whole lesson.")
     beats: list[BeatPlan] = Field(description="The ordered beats that make up the lesson.")
+
+
+class BeatCode(BaseModel):
+    """Per-beat scene-generation output (docs/PLAN.md §5.2, Phase 4)."""
+
+    code: str = Field(
+        description=(
+            "Complete ES module source for this beat's scene, written against "
+            "the frozen scene contract (a single `export default` factory)."
+        )
+    )

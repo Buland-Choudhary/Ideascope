@@ -11,7 +11,11 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_prefix="IDEASCOPE_", env_file=".env")
+    # populate_by_name lets tests construct Settings(anthropic_api_key=...) by
+    # field name even though the field also declares an env-var alias below.
+    model_config = SettingsConfigDict(
+        env_prefix="IDEASCOPE_", env_file=".env", populate_by_name=True
+    )
 
     # Anthropic API key is server-side only and never shipped to the client
     # (docs/PLAN.md §7). Accepts either IDEASCOPE_ANTHROPIC_API_KEY or the
@@ -23,6 +27,7 @@ class Settings(BaseSettings):
 
     # Model roles (docs/PLAN.md §1). Overridable via env for experiments.
     plan_model: str = "claude-opus-4-8"
+    beat_model: str = "claude-opus-4-8"
 
     # When true, the generation pipeline serves fixture lessons instead of
     # calling Anthropic (docs/PLAN.md §1 "Mock generation mode"). Wired up in
