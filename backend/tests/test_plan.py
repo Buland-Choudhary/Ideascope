@@ -48,7 +48,7 @@ class FakeClient:
         self.messages = FakeMessages(plans)
 
 
-SETTINGS = Settings(plan_model="claude-opus-4-8")  # type: ignore[call-arg]
+SETTINGS = Settings(plan_model="claude-opus-4-8")
 
 
 def test_plan_returns_when_beat_count_in_band() -> None:
@@ -81,4 +81,4 @@ def test_plan_wraps_client_errors() -> None:
 
     client = SimpleNamespace(messages=BoomMessages())
     with pytest.raises(PlanGenerationError, match="plan call failed"):
-        generate_plan(client, SETTINGS, topic="t", params=LessonParams())  # type: ignore[arg-type]
+        generate_plan(client, SETTINGS, topic="t", params=LessonParams())

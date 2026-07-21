@@ -128,8 +128,9 @@ The **build plan (`docs/PLAN.md`) is drafted** (v2), resolving the remaining ope
 - **Phase 1 (Lesson spec + scene contract) — done.** Pydantic lesson-spec models + hand-mirrored TS types, the scene-code runtime contract frozen in [`docs/SCENE_CONTRACT.md`](docs/SCENE_CONTRACT.md), and two hand-authored fixture lessons (canvas + SVG) that validate against the schema.
 - **Phase 2 (Static player shell) — done.** The lesson player, click-to-advance state machine, and both engine runtimes (sandboxed-iframe scene renderer implementing the contract) run the fixtures end-to-end in the browser — click-to-advance, keyboard nav, and manipulables all work. No backend generation yet.
 - **Phase 3 (Backend skeleton + plan call) — done.** `POST /api/lessons`, the Claude plan-stage call (structured outputs), mock generation mode, and the generation trace log. Both flows verified end-to-end: mock (topic form → backend → player) in a real browser, and the **live Claude plan call spot-checked against 10 varied real topics — 10/10 succeeded, all in-band on the first pass**. See [`backend/README.md`](backend/README.md) for API key setup.
+- **Phase 4 (Per-beat scene-code generation) — code done, unit-verified (34 tests); live spot-check pending.** Per-beat Claude calls targeting the frozen scene contract, one few-shot per animation primitive, contract/denylist retries, and a transient-API-error retry path. Two live spot-check attempts both hit sustained `529 Overloaded` from Anthropic on the beat-generation calls specifically (not a bug — all plan calls across both runs succeeded; ~$0.22 spent, nothing wasted on errors). Deferred until the API's load clears; see `docs/PLAN.md` §11 for the full account.
 
-Next up is Phase 4 (per-beat scene-code generation).
+Next: retry `scripts/spot_check_beats.py` once Anthropic's API load clears to close out Phase 4, then move to Phase 5 (validation pipeline).
 
 Remaining open decisions (resolved in the plan, revisit if circumstances change):
 

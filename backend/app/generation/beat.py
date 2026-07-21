@@ -20,6 +20,7 @@ from typing import Any
 
 from app.config import Settings
 from app.generation.beat_prompts import BEAT_SYSTEM_PROMPT, build_beat_user_message
+from app.generation.retry import is_retryable
 from app.generation.schema import BeatCode, BeatPlan
 from app.observability import log_generation_event
 
@@ -87,8 +88,14 @@ def generate_beat_scene(
                 messages=[{"role": "user", "content": content}],
                 output_format=BeatCode,
             )
-        except Exception as exc:  # noqa: BLE001 — log and convert to a domain error
-            log_generation_event("beat", "error", attempt=attempt, error=str(exc), **log_ctx)
+        except Exception as exc:  # noqa: BLE001 — classify below, then log + convert/retry
+            retryable = is_retryable(exc)
+            log_generation_event(
+                "beat", "error", attempt=attempt, error=str(exc), retryable=retryable, **log_ctx
+            )
+            if retryable and attempt < _MAX_ATTEMPTS:
+                time.sleep(min(2**attempt, 10))
+                continue
             raise BeatGenerationError(f"beat call failed: {exc}") from exc
 
         latency_ms = int((time.monotonic() - started) * 1000)
@@ -107,6 +114,8 @@ def generate_beat_scene(
                 attempt=attempt,
                 latency_ms=latency_ms,
                 error="missing export default",
+                input_tokens=getattr(usage, "input_tokens", None),
+                output_tokens=getattr(usage, "output_tokens", None),
                 **log_ctx,
             )
             continue
@@ -120,6 +129,8 @@ def generate_beat_scene(
                 attempt=attempt,
                 latency_ms=latency_ms,
                 error=reason,
+                input_tokens=getattr(usage, "input_tokens", None),
+                output_tokens=getattr(usage, "output_tokens", None),
                 **log_ctx,
             )
             continue

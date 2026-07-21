@@ -67,7 +67,7 @@ def test_generate_lesson_end_to_end(monkeypatch: pytest.MonkeyPatch) -> None:
     fake_client = FakeClient(_plan(3), good_code)
     monkeypatch.setattr("app.generation.service.Anthropic", lambda api_key: fake_client)
 
-    settings = Settings(anthropic_api_key="sk-test", mock_generation=False)  # type: ignore[call-arg]
+    settings = Settings(anthropic_api_key="sk-test", mock_generation=False)
     lesson = generate_lesson(
         settings,
         topic="how something works",
@@ -88,6 +88,6 @@ def test_generate_lesson_end_to_end(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_generate_lesson_without_key_raises(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("IDEASCOPE_ANTHROPIC_API_KEY", raising=False)
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
-    settings = Settings(mock_generation=False)  # type: ignore[call-arg]
+    settings = Settings(mock_generation=False)
     with pytest.raises(GenerationUnavailableError):
         generate_lesson(settings, topic="t", params=LessonParams())

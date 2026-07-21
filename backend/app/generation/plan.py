@@ -12,6 +12,7 @@ from typing import Any
 
 from app.config import Settings
 from app.generation.prompts import PLAN_SYSTEM_PROMPT, build_plan_user_message
+from app.generation.retry import is_retryable
 from app.generation.schema import LessonPlan
 from app.models import BEAT_BANDS, LessonParams
 from app.observability import log_generation_event
@@ -62,8 +63,14 @@ def generate_plan(
                 messages=[{"role": "user", "content": content}],
                 output_format=LessonPlan,
             )
-        except Exception as exc:  # noqa: BLE001 — log and convert to a domain error
-            log_generation_event("plan", "error", topic=topic, attempt=attempt, error=str(exc))
+        except Exception as exc:  # noqa: BLE001 — classify below, then log + convert/retry
+            retryable = is_retryable(exc)
+            log_generation_event(
+                "plan", "error", topic=topic, attempt=attempt, error=str(exc), retryable=retryable
+            )
+            if retryable and attempt < _MAX_ATTEMPTS:
+                time.sleep(min(2**attempt, 10))
+                continue
             raise PlanGenerationError(f"plan call failed: {exc}") from exc
 
         latency_ms = int((time.monotonic() - started) * 1000)
