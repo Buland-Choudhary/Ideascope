@@ -1,0 +1,90 @@
+{
+  "id": "fixture-water-cycle",
+  "topic": "The water cycle",
+  "params": {
+    "duration": "medium",
+    "difficulty": null,
+    "priorKnowledge": null,
+    "tone": null,
+    "language": null
+  },
+  "outline": {
+    "title": "The water cycle",
+    "summary": "Water moves in a never-ending loop: it rises as vapor, gathers into clouds, and falls back as rain. This lesson walks the three stages and lets you step through them.",
+    "targetBeatCount": 3
+  },
+  "beats": [
+    {
+      "id": "water-0",
+      "index": 0,
+      "intent": "Show the three stages of the water cycle as a connected loop.",
+      "primitive": "process_flow",
+      "engine": "svg",
+      "narration": {
+        "text": "The water cycle is a loop with three stages that feed into each other: evaporation, condensation, and precipitation."
+      },
+      "scene": {
+        "code": "export default function createScene(ctx) {\n  const svg = ctx.svg;\n  const NS = \"http://www.w3.org/2000/svg\";\n  const make = (tag, attrs) => {\n    const el = document.createElementNS(NS, tag);\n    for (const k in attrs) el.setAttribute(k, String(attrs[k]));\n    return el;\n  };\n  const cx = ctx.width / 2, cy = ctx.height / 2;\n  const r = Math.min(ctx.width, ctx.height) * 0.12;\n  const pts = [\n    [cx, cy - r * 2.2],\n    [cx + r * 2.4, cy + r * 1.6],\n    [cx - r * 2.4, cy + r * 1.6],\n  ];\n  const labels = [\"Evaporation\", \"Condensation\", \"Precipitation\"];\n\n  for (let i = 0; i < 3; i++) {\n    const a = pts[i], b = pts[(i + 1) % 3];\n    svg.appendChild(make(\"line\", { x1: a[0], y1: a[1], x2: b[0], y2: b[1], stroke: \"#bbb\", \"stroke-width\": 2 }));\n  }\n  for (let i = 0; i < 3; i++) {\n    svg.appendChild(make(\"circle\", { cx: pts[i][0], cy: pts[i][1], r, fill: \"#dbeafe\", stroke: \"#3b82f6\", \"stroke-width\": 2 }));\n    const t = make(\"text\", { x: pts[i][0], y: pts[i][1] + 4, \"text-anchor\": \"middle\", \"font-size\": 13, fill: \"#1e3a8a\" });\n    t.textContent = labels[i];\n    svg.appendChild(t);\n  }\n  ctx.ready();\n  return {};\n}\n"
+      },
+      "manipulables": [],
+      "status": "ready",
+      "validation": null
+    },
+    {
+      "id": "water-1",
+      "index": 1,
+      "intent": "Let the learner step through and highlight each stage in turn.",
+      "primitive": "process_flow",
+      "engine": "svg",
+      "narration": {
+        "text": "Step through the cycle one stage at a time. Each highlighted stage hands off to the next, then the loop begins again."
+      },
+      "scene": {
+        "code": "export default function createScene(ctx) {\n  const svg = ctx.svg;\n  const NS = \"http://www.w3.org/2000/svg\";\n  const make = (tag, attrs) => {\n    const el = document.createElementNS(NS, tag);\n    for (const k in attrs) el.setAttribute(k, String(attrs[k]));\n    return el;\n  };\n  const cx = ctx.width / 2, cy = ctx.height / 2;\n  const r = Math.min(ctx.width, ctx.height) * 0.12;\n  const pts = [\n    [cx, cy - r * 2.2],\n    [cx + r * 2.4, cy + r * 1.6],\n    [cx - r * 2.4, cy + r * 1.6],\n  ];\n  const labels = [\"Evaporation\", \"Condensation\", \"Precipitation\"];\n\n  for (let i = 0; i < 3; i++) {\n    const a = pts[i], b = pts[(i + 1) % 3];\n    svg.appendChild(make(\"line\", { x1: a[0], y1: a[1], x2: b[0], y2: b[1], stroke: \"#bbb\", \"stroke-width\": 2 }));\n  }\n  const circles = [];\n  for (let i = 0; i < 3; i++) {\n    const c = make(\"circle\", { cx: pts[i][0], cy: pts[i][1], r, fill: \"#eee\", stroke: \"#3b82f6\", \"stroke-width\": 2 });\n    circles.push(c);\n    svg.appendChild(c);\n    const t = make(\"text\", { x: pts[i][0], y: pts[i][1] + 4, \"text-anchor\": \"middle\", \"font-size\": 13, fill: \"#1e3a8a\" });\n    t.textContent = labels[i];\n    svg.appendChild(t);\n  }\n  let stage = Number(ctx.params.stage ?? 0);\n  const highlight = () => circles.forEach((c, i) => c.setAttribute(\"fill\", i === stage ? \"#3b82f6\" : \"#eee\"));\n  highlight();\n  ctx.ready();\n  return {\n    onParamChange(param, value) {\n      if (param === \"stage\") { stage = Number(value); highlight(); }\n    },\n  };\n}\n"
+      },
+      "manipulables": [
+        {
+          "id": "stage",
+          "label": "Stage",
+          "type": "stepper",
+          "param": "stage",
+          "default": 0,
+          "min": 0.0,
+          "max": 2.0,
+          "step": 1.0,
+          "options": null
+        }
+      ],
+      "status": "ready",
+      "validation": null
+    },
+    {
+      "id": "water-2",
+      "index": 2,
+      "intent": "Let the learner toggle the stage labels to self-test recall.",
+      "primitive": "process_flow",
+      "engine": "svg",
+      "narration": {
+        "text": "Turn the labels off and see if you can name each stage from its position in the loop, then turn them back on to check."
+      },
+      "scene": {
+        "code": "export default function createScene(ctx) {\n  const svg = ctx.svg;\n  const NS = \"http://www.w3.org/2000/svg\";\n  const make = (tag, attrs) => {\n    const el = document.createElementNS(NS, tag);\n    for (const k in attrs) el.setAttribute(k, String(attrs[k]));\n    return el;\n  };\n  const cx = ctx.width / 2, cy = ctx.height / 2;\n  const r = Math.min(ctx.width, ctx.height) * 0.12;\n  const pts = [\n    [cx, cy - r * 2.2],\n    [cx + r * 2.4, cy + r * 1.6],\n    [cx - r * 2.4, cy + r * 1.6],\n  ];\n  const labels = [\"Evaporation\", \"Condensation\", \"Precipitation\"];\n\n  const texts = [];\n  for (let i = 0; i < 3; i++) {\n    svg.appendChild(make(\"circle\", { cx: pts[i][0], cy: pts[i][1], r, fill: \"#dbeafe\", stroke: \"#3b82f6\", \"stroke-width\": 2 }));\n    const t = make(\"text\", { x: pts[i][0], y: pts[i][1] + 4, \"text-anchor\": \"middle\", \"font-size\": 13, fill: \"#1e3a8a\" });\n    t.textContent = labels[i];\n    texts.push(t);\n    svg.appendChild(t);\n  }\n  let show = Boolean(ctx.params.showLabels ?? true);\n  const apply = () => texts.forEach((t) => t.setAttribute(\"visibility\", show ? \"visible\" : \"hidden\"));\n  apply();\n  ctx.ready();\n  return {\n    onParamChange(param, value) {\n      if (param === \"showLabels\") { show = Boolean(value); apply(); }\n    },\n  };\n}\n"
+      },
+      "manipulables": [
+        {
+          "id": "labels",
+          "label": "Show labels",
+          "type": "toggle",
+          "param": "showLabels",
+          "default": true,
+          "min": null,
+          "max": null,
+          "step": null,
+          "options": null
+        }
+      ],
+      "status": "ready",
+      "validation": null
+    }
+  ]
+}

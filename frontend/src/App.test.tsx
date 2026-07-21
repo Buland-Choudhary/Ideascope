@@ -1,39 +1,32 @@
-import { render, screen, waitFor } from "@testing-library/react";
-import { afterEach, expect, test, vi } from "vitest";
+import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { expect, test } from "vitest";
 
 import { App } from "./App";
+import { FIXTURES } from "./fixtures";
 
-afterEach(() => {
-  vi.restoreAllMocks();
-});
-
-test("renders the title and tagline", () => {
-  vi.stubGlobal("fetch", vi.fn(() => new Promise(() => {})));
+test("lists the fixture lessons", () => {
   render(<App />);
   expect(screen.getByRole("heading", { name: "Ideascope" })).toBeInTheDocument();
-  expect(screen.getByText("See any idea, one click at a time.")).toBeInTheDocument();
+  for (const lesson of FIXTURES) {
+    expect(screen.getByText(lesson.outline.title)).toBeInTheDocument();
+  }
 });
 
-test("shows backend version when the health check succeeds", async () => {
-  vi.stubGlobal(
-    "fetch",
-    vi.fn(async () => new Response(JSON.stringify({ version: "0.0.1" }), { status: 200 })),
-  );
+test("opens a lesson in the player and can return to the list", async () => {
+  const user = userEvent.setup();
   render(<App />);
-  await waitFor(() =>
-    expect(screen.getByText("Backend online (v0.0.1)")).toBeInTheDocument(),
-  );
-});
 
-test("shows an error state when the health check fails", async () => {
-  vi.stubGlobal(
-    "fetch",
-    vi.fn(async () => {
-      throw new Error("network down");
-    }),
-  );
-  render(<App />);
-  await waitFor(() =>
-    expect(screen.getByText("Backend unreachable")).toBeInTheDocument(),
-  );
+  const first = FIXTURES[0];
+  await user.click(screen.getByText(first.outline.title));
+
+  // Player header shows beat position.
+  expect(screen.getByText(/Beat 1 of/)).toBeInTheDocument();
+  // Narration of the first beat is present.
+  expect(screen.getByText(first.beats[0].narration.text)).toBeInTheDocument();
+
+  await user.click(screen.getByRole("button", { name: /All lessons/ }));
+  expect(
+    screen.getByRole("heading", { name: "Example lessons", level: 2 }),
+  ).toBeInTheDocument();
 });

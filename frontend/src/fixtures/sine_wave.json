@@ -1,0 +1,90 @@
+{
+  "id": "fixture-sine-wave",
+  "topic": "How a sine wave works",
+  "params": {
+    "duration": "medium",
+    "difficulty": null,
+    "priorKnowledge": null,
+    "tone": null,
+    "language": null
+  },
+  "outline": {
+    "title": "How a sine wave works",
+    "summary": "A sine wave is smooth, repeating up-and-down motion. This lesson builds intuition for its two knobs: amplitude (height) and frequency (how many cycles fit across).",
+    "targetBeatCount": 3
+  },
+  "beats": [
+    {
+      "id": "sine-0",
+      "index": 0,
+      "intent": "Introduce a sine wave as smooth, repeating up-and-down motion.",
+      "primitive": "plot",
+      "engine": "canvas",
+      "narration": {
+        "text": "A sine wave is the smoothest way something can go up and down and repeat forever. Watch it roll across the screen."
+      },
+      "scene": {
+        "code": "export default function createScene(ctx) {\n  let firstFrame = true;\n  return {\n    setup(p) {\n      p.frameRate(ctx.reducedMotion ? 1 : 30);\n    },\n    draw(p) {\n      const w = ctx.width, h = ctx.height;\n      p.background(255);\n      p.stroke(220); p.strokeWeight(1);\n      p.line(0, h / 2, w, h / 2);\n      const amp = h * 0.3;\n      const k = (2 * Math.PI * 1.5) / w;\n      const phase = ctx.reducedMotion ? 0 : p.frameCount * 0.05;\n      p.noFill(); p.stroke(30, 120, 220); p.strokeWeight(3);\n      p.beginShape();\n      for (let x = 0; x <= w; x += 2) {\n        p.vertex(x, h / 2 - amp * Math.sin(k * x + phase));\n      }\n      p.endShape();\n      if (firstFrame) { firstFrame = false; ctx.ready(); }\n    },\n  };\n}\n"
+      },
+      "manipulables": [],
+      "status": "ready",
+      "validation": null
+    },
+    {
+      "id": "sine-1",
+      "index": 1,
+      "intent": "Show that amplitude controls the height of the wave.",
+      "primitive": "plot",
+      "engine": "canvas",
+      "narration": {
+        "text": "Amplitude is how tall the wave is. Drag the slider and the peaks grow or shrink \u2014 but the timing stays the same."
+      },
+      "scene": {
+        "code": "export default function createScene(ctx) {\n  let amplitude = Number(ctx.params.amplitude ?? 40);\n  let firstFrame = true;\n  return {\n    setup(p) {\n      p.frameRate(ctx.reducedMotion ? 1 : 30);\n    },\n    draw(p) {\n      const w = ctx.width, h = ctx.height;\n      p.background(255);\n      p.stroke(220); p.strokeWeight(1);\n      p.line(0, h / 2, w, h / 2);\n      const k = (2 * Math.PI * 1.5) / w;\n      const phase = ctx.reducedMotion ? 0 : p.frameCount * 0.05;\n      p.noFill(); p.stroke(30, 120, 220); p.strokeWeight(3);\n      p.beginShape();\n      for (let x = 0; x <= w; x += 2) {\n        p.vertex(x, h / 2 - amplitude * Math.sin(k * x + phase));\n      }\n      p.endShape();\n      if (firstFrame) { firstFrame = false; ctx.ready(); }\n    },\n    onParamChange(param, value) {\n      if (param === \"amplitude\") amplitude = Number(value);\n    },\n  };\n}\n"
+      },
+      "manipulables": [
+        {
+          "id": "amp",
+          "label": "Amplitude",
+          "type": "slider",
+          "param": "amplitude",
+          "default": 40,
+          "min": 5.0,
+          "max": 120.0,
+          "step": 1.0,
+          "options": null
+        }
+      ],
+      "status": "ready",
+      "validation": null
+    },
+    {
+      "id": "sine-2",
+      "index": 2,
+      "intent": "Show that frequency controls how many cycles fit across the screen.",
+      "primitive": "plot",
+      "engine": "canvas",
+      "narration": {
+        "text": "Frequency is how many full cycles fit across. Turn it up and the wave bunches together; turn it down and it stretches out."
+      },
+      "scene": {
+        "code": "export default function createScene(ctx) {\n  let frequency = Number(ctx.params.frequency ?? 1.5);\n  let firstFrame = true;\n  return {\n    setup(p) {\n      p.frameRate(ctx.reducedMotion ? 1 : 30);\n    },\n    draw(p) {\n      const w = ctx.width, h = ctx.height;\n      p.background(255);\n      p.stroke(220); p.strokeWeight(1);\n      p.line(0, h / 2, w, h / 2);\n      const amp = h * 0.3;\n      const k = (2 * Math.PI * frequency) / w;\n      const phase = ctx.reducedMotion ? 0 : p.frameCount * 0.05;\n      p.noFill(); p.stroke(30, 120, 220); p.strokeWeight(3);\n      p.beginShape();\n      for (let x = 0; x <= w; x += 2) {\n        p.vertex(x, h / 2 - amp * Math.sin(k * x + phase));\n      }\n      p.endShape();\n      if (firstFrame) { firstFrame = false; ctx.ready(); }\n    },\n    onParamChange(param, value) {\n      if (param === \"frequency\") frequency = Number(value);\n    },\n  };\n}\n"
+      },
+      "manipulables": [
+        {
+          "id": "freq",
+          "label": "Frequency",
+          "type": "slider",
+          "param": "frequency",
+          "default": 1.5,
+          "min": 0.5,
+          "max": 5.0,
+          "step": 0.1,
+          "options": null
+        }
+      ],
+      "status": "ready",
+      "validation": null
+    }
+  ]
+}

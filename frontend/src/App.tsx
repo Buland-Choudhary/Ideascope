@@ -1,52 +1,45 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000";
+import { FIXTURES, getFixture } from "./fixtures";
+import { LessonPlayer } from "./player/LessonPlayer";
 
-type BackendStatus =
-  | { kind: "loading" }
-  | { kind: "ok"; version: string }
-  | { kind: "error" };
-
-async function fetchBackendStatus(signal: AbortSignal): Promise<BackendStatus> {
-  try {
-    const response = await fetch(`${API_BASE_URL}/api/health`, { signal });
-    if (!response.ok) return { kind: "error" };
-    const body: { version: string } = await response.json();
-    return { kind: "ok", version: body.version };
-  } catch {
-    return { kind: "error" };
-  }
-}
-
+/**
+ * Phase-2 shell: a picker over the hand-authored fixture lessons, plus the
+ * lesson player. The real topic-input form and generation flow arrive in
+ * Phase 6 (docs/PLAN.md §11); this proves the player + engine runtimes in
+ * isolation against fixtures.
+ */
 export function App() {
-  const [status, setStatus] = useState<BackendStatus>({ kind: "loading" });
+  const [activeId, setActiveId] = useState<string | null>(null);
+  const active = activeId ? getFixture(activeId) : undefined;
 
-  useEffect(() => {
-    const controller = new AbortController();
-    void fetchBackendStatus(controller.signal).then(setStatus);
-    return () => controller.abort();
-  }, []);
+  if (active) {
+    return <LessonPlayer lesson={active} onExit={() => setActiveId(null)} />;
+  }
 
   return (
-    <main className="mx-auto flex min-h-screen max-w-2xl flex-col justify-center gap-4 p-8">
-      <h1 className="text-4xl font-bold tracking-tight">Ideascope</h1>
-      <p className="text-lg text-gray-600">See any idea, one click at a time.</p>
-      <BackendBadge status={status} />
+    <main className="mx-auto flex min-h-screen max-w-2xl flex-col justify-center gap-6 p-8">
+      <header>
+        <h1 className="text-4xl font-bold tracking-tight">Ideascope</h1>
+        <p className="mt-1 text-lg text-gray-600">See any idea, one click at a time.</p>
+      </header>
+
+      <div className="flex flex-col gap-3">
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-400">
+          Example lessons
+        </h2>
+        {FIXTURES.map((lesson) => (
+          <button
+            key={lesson.id}
+            type="button"
+            onClick={() => setActiveId(lesson.id)}
+            className="rounded-lg border border-gray-200 p-4 text-left transition hover:border-gray-400 hover:bg-gray-50"
+          >
+            <span className="block font-medium text-gray-900">{lesson.outline.title}</span>
+            <span className="mt-1 block text-sm text-gray-500">{lesson.outline.summary}</span>
+          </button>
+        ))}
+      </div>
     </main>
-  );
-}
-
-function BackendBadge({ status }: { status: BackendStatus }) {
-  const label =
-    status.kind === "loading"
-      ? "Checking backend…"
-      : status.kind === "ok"
-        ? `Backend online (v${status.version})`
-        : "Backend unreachable";
-
-  return (
-    <p className="text-sm text-gray-500" role="status">
-      {label}
-    </p>
   );
 }

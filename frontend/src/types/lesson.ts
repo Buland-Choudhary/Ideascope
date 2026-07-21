@@ -25,6 +25,9 @@ export type Primitive =
 
 export type ManipulableType = "slider" | "stepper" | "toggle" | "select";
 
+/** A live manipulable value flowing into a scene via `ctx.params`. */
+export type ParamValue = number | string | boolean;
+
 export type BeatStatus =
   | "pending"
   | "generating"

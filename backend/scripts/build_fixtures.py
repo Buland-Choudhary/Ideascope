@@ -29,7 +29,12 @@ from app.models import (
     Scene,
 )
 
-FIXTURES_DIR = Path(__file__).resolve().parent.parent / "app" / "fixtures"
+_BACKEND_ROOT = Path(__file__).resolve().parent.parent
+_REPO_ROOT = _BACKEND_ROOT.parent
+FIXTURES_DIR = _BACKEND_ROOT / "app" / "fixtures"
+# The Phase-2 static player consumes the same fixtures; emit a copy it can
+# import directly (single source of truth is this builder).
+FRONTEND_FIXTURES_DIR = _REPO_ROOT / "frontend" / "src" / "fixtures"
 
 
 # --- Sine wave (canvas / plot, with slider manipulables) -------------------
@@ -385,12 +390,16 @@ FIXTURES: dict[str, Lesson] = {
 
 
 def main() -> None:
-    FIXTURES_DIR.mkdir(parents=True, exist_ok=True)
-    for name, lesson in FIXTURES.items():
-        path = FIXTURES_DIR / f"{name}.json"
-        payload = lesson.model_dump(by_alias=True, mode="json")
-        path.write_text(json.dumps(payload, indent=2) + "\n")
-        print(f"wrote {path.relative_to(FIXTURES_DIR.parent.parent)}")
+    targets = [FIXTURES_DIR]
+    if FRONTEND_FIXTURES_DIR.parent.exists():
+        targets.append(FRONTEND_FIXTURES_DIR)
+    for target in targets:
+        target.mkdir(parents=True, exist_ok=True)
+        for name, lesson in FIXTURES.items():
+            path = target / f"{name}.json"
+            payload = lesson.model_dump(by_alias=True, mode="json")
+            path.write_text(json.dumps(payload, indent=2) + "\n")
+            print(f"wrote {path.relative_to(_REPO_ROOT)}")
 
 
 if __name__ == "__main__":
