@@ -5,6 +5,7 @@ runtime contract these models' ``scene.code`` strings are written against).
 """
 
 from app.models.lesson import (
+    BEAT_BANDS,
     Beat,
     BeatStatus,
     BeatValidation,
@@ -23,6 +24,7 @@ from app.models.lesson import (
 )
 
 __all__ = [
+    "BEAT_BANDS",
     "Beat",
     "BeatStatus",
     "BeatValidation",

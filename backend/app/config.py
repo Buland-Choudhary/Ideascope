@@ -6,6 +6,7 @@ settings object rather than scattered ``os.environ`` reads. See docs/PLAN.md §5
 
 from functools import lru_cache
 
+from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -13,8 +14,15 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="IDEASCOPE_", env_file=".env")
 
     # Anthropic API key is server-side only and never shipped to the client
-    # (docs/PLAN.md §7). Optional at this phase — no generation calls exist yet.
-    anthropic_api_key: str | None = None
+    # (docs/PLAN.md §7). Accepts either IDEASCOPE_ANTHROPIC_API_KEY or the
+    # SDK-standard ANTHROPIC_API_KEY, so setting either works.
+    anthropic_api_key: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("IDEASCOPE_ANTHROPIC_API_KEY", "ANTHROPIC_API_KEY"),
+    )
+
+    # Model roles (docs/PLAN.md §1). Overridable via env for experiments.
+    plan_model: str = "claude-opus-4-8"
 
     # When true, the generation pipeline serves fixture lessons instead of
     # calling Anthropic (docs/PLAN.md §1 "Mock generation mode"). Wired up in

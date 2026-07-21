@@ -127,8 +127,9 @@ The **build plan (`docs/PLAN.md`) is drafted** (v2), resolving the remaining ope
 - **Phase 0 (Foundations) — done.** Repo scaffolded with a building React/Vite frontend and FastAPI backend, CI (lint + typecheck + test + build for both), MIT license. Hello-world loop verified end-to-end in a real browser.
 - **Phase 1 (Lesson spec + scene contract) — done.** Pydantic lesson-spec models + hand-mirrored TS types, the scene-code runtime contract frozen in [`docs/SCENE_CONTRACT.md`](docs/SCENE_CONTRACT.md), and two hand-authored fixture lessons (canvas + SVG) that validate against the schema.
 - **Phase 2 (Static player shell) — done.** The lesson player, click-to-advance state machine, and both engine runtimes (sandboxed-iframe scene renderer implementing the contract) run the fixtures end-to-end in the browser — click-to-advance, keyboard nav, and manipulables all work. No backend generation yet.
+- **Phase 3 (Backend skeleton + plan call) — done (live call pending API key).** `POST /api/lessons`, the Claude plan-stage call (structured outputs), mock generation mode, and the generation trace log. The mock flow (topic form → backend → player) is verified end-to-end; the live Claude call is built and unit-tested but needs an Anthropic API key to run for real — see [`backend/README.md`](backend/README.md).
 
-Next up is Phase 3 (backend skeleton + Claude plan call + mock generation mode).
+Next up is Phase 4 (per-beat scene-code generation).
 
 Remaining open decisions (resolved in the plan, revisit if circumstances change):
 
