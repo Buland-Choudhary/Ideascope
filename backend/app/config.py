@@ -28,6 +28,12 @@ class Settings(BaseSettings):
     # Model roles (docs/PLAN.md §1). Overridable via env for experiments.
     plan_model: str = "claude-opus-4-8"
     beat_model: str = "claude-opus-4-8"
+    auto_fix_model: str = "claude-haiku-4-5"
+    critique_model: str = "claude-opus-4-8"
+
+    # Validation pipeline (docs/PLAN.md §5.2, §5.4).
+    render_timeout_ms: int = 5000
+    max_concurrent_renders: int = 3
 
     # When true, the generation pipeline serves fixture lessons instead of
     # calling Anthropic (docs/PLAN.md §1 "Mock generation mode"). Wired up in

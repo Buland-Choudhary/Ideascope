@@ -60,12 +60,22 @@ def generate_beat_scene(
     beat: BeatPlan,
     lesson_id: str,
     beat_index: int,
+    extra_feedback: str | None = None,
 ) -> str:
-    """Generate and return this beat's scene code (module source)."""
+    """Generate and return this beat's scene code (module source).
+
+    ``extra_feedback``, when given, is appended to the base prompt — used by
+    the validation pipeline (docs/PLAN.md §5.2 step 4) to regenerate a beat
+    that failed the vision critique, steering the new attempt away from the
+    same mistake. Independent of the contract/denylist retry loop below,
+    which always starts from the (possibly feedback-augmented) base message.
+    """
     system = [
         {"type": "text", "text": BEAT_SYSTEM_PROMPT, "cache_control": {"type": "ephemeral"}},
     ]
     user_message = build_beat_user_message(beat)
+    if extra_feedback:
+        user_message = f"{user_message}\n\n{extra_feedback}"
     log_ctx = {
         "lesson_id": lesson_id,
         "beat_index": beat_index,
