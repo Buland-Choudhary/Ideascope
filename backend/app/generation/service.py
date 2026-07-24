@@ -1,22 +1,25 @@
 """Generation orchestration — the entry point the API calls.
 
 Phase 3 added the plan stage; Phase 4 added per-beat scene generation; Phase 5
-adds the validation pipeline, so real mode now returns a lesson whose beats
-have each been render-checked, auto-fixed, and vision-critiqued — or gracefully
+added the validation pipeline, so real mode returns a lesson whose beats have
+each been render-checked, auto-fixed, and vision-critiqued — or gracefully
 degraded to a reliable text fallback rather than shipping something broken
-(docs/PLAN.md §5.2 steps 3-5). Beats generate and validate sequentially within
-the request for now; JIT/SSE delivery so the learner sees beat 1 immediately is
-Phase 6.
+(docs/PLAN.md §5.2 steps 3-5). ``generate_lesson`` here generates the whole
+lesson in one blocking call; ``app/generation/orchestrator.py`` (Phase 6)
+shares ``generate_and_validate_beat`` below to do the same work incrementally,
+streaming each beat to the client as it's ready instead of making the learner
+wait for all of them.
 """
 
 import uuid
+from typing import Any
 
 from anthropic import Anthropic
 
 from app.config import Settings
-from app.generation.beat import generate_beat_scene
+from app.generation.beat import BeatGenerationError, generate_beat_scene
 from app.generation.plan import generate_plan
-from app.generation.schema import LessonPlan
+from app.generation.schema import BeatPlan, LessonPlan
 from app.models import (
     Beat,
     BeatStatus,
@@ -27,6 +30,8 @@ from app.models import (
     Outline,
     Scene,
 )
+from app.observability import log_generation_event
+from app.validation.fallback import build_fallback_scene
 from app.validation.pipeline import validate_beat
 
 
@@ -59,6 +64,56 @@ def _lesson_from_plan(topic: str, params: LessonParams, plan: LessonPlan) -> Les
     )
 
 
+def generate_and_validate_beat(
+    client: Any, settings: Settings, *, beat_plan: BeatPlan, lesson_id: str, beat_index: int
+) -> tuple[Scene, BeatStatus, BeatValidation]:
+    """Generate one beat's scene code and run it through the validation
+    pipeline, returning the fields a ``Beat`` needs.
+
+    If scene-code generation itself fails outright (``BeatGenerationError`` —
+    exhausted the contract/denylist retry budget, or a non-retryable API
+    error), degrade straight to the deterministic text fallback rather than
+    propagating the error: a beat with no content at all would violate the
+    "never blank" rule (README principle 4) just as much as one that fails
+    validation, so the same graceful-degradation path (docs/PLAN.md §5.2 step
+    5) applies here too.
+    """
+    try:
+        code = generate_beat_scene(
+            client, settings, beat=beat_plan, lesson_id=lesson_id, beat_index=beat_index
+        )
+    except BeatGenerationError as exc:
+        log_generation_event(
+            "beat", "degraded", lesson_id=lesson_id, beat_index=beat_index, render_error=str(exc)
+        )
+        return (
+            Scene(code=build_fallback_scene(beat_plan.narration)),
+            BeatStatus.DEGRADED,
+            BeatValidation(
+                render_ok=False, auto_fix_attempts=0, critique_pass=None, critique_feedback=str(exc)
+            ),
+        )
+
+    validated = validate_beat(
+        client,
+        settings,
+        beat_plan=beat_plan,
+        code=code,
+        lesson_id=lesson_id,
+        beat_index=beat_index,
+    )
+    return (
+        Scene(code=validated.code),
+        validated.status,
+        BeatValidation(
+            render_ok=validated.render_ok,
+            auto_fix_attempts=validated.auto_fix_attempts,
+            critique_pass=validated.critique_pass,
+            critique_feedback=validated.critique_feedback,
+        ),
+    )
+
+
 def generate_lesson(settings: Settings, *, topic: str, params: LessonParams) -> Lesson:
     """Generate a lesson for the given topic.
 
@@ -84,19 +139,11 @@ def generate_lesson(settings: Settings, *, topic: str, params: LessonParams) -> 
     lesson = _lesson_from_plan(topic, params, plan)
 
     for i, (beat_plan, beat) in enumerate(zip(plan.beats, lesson.beats, strict=True)):
-        code = generate_beat_scene(
-            client, settings, beat=beat_plan, lesson_id=lesson.id, beat_index=i
+        scene, status, validation = generate_and_validate_beat(
+            client, settings, beat_plan=beat_plan, lesson_id=lesson.id, beat_index=i
         )
-        validated = validate_beat(
-            client, settings, beat_plan=beat_plan, code=code, lesson_id=lesson.id, beat_index=i
-        )
-        beat.scene = Scene(code=validated.code)
-        beat.status = validated.status
-        beat.validation = BeatValidation(
-            render_ok=validated.render_ok,
-            auto_fix_attempts=validated.auto_fix_attempts,
-            critique_pass=validated.critique_pass,
-            critique_feedback=validated.critique_feedback,
-        )
+        beat.scene = scene
+        beat.status = status
+        beat.validation = validation
 
     return lesson

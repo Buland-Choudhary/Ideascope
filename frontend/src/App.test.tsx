@@ -1,9 +1,15 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { afterEach, expect, test, vi } from "vitest";
+import { afterEach, beforeEach, expect, test, vi } from "vitest";
 
 import { App } from "./App";
 import { FIXTURES } from "./fixtures";
+import { FakeEventSource } from "./test-support/fakeEventSource";
+
+beforeEach(() => {
+  FakeEventSource.reset();
+  vi.stubGlobal("EventSource", FakeEventSource);
+});
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -32,26 +38,48 @@ test("opens an example lesson in the player and returns to the landing", async (
   expect(screen.getByRole("heading", { name: "Or try an example", level: 2 })).toBeInTheDocument();
 });
 
-test("generating a lesson plays the returned lesson", async () => {
+test("generating a lesson streams the outline then each beat as it arrives", async () => {
   const user = userEvent.setup();
   const lesson = FIXTURES[0];
   vi.stubGlobal(
     "fetch",
-    vi.fn(async () => new Response(JSON.stringify(lesson), { status: 200 })),
+    vi.fn(async () => new Response(JSON.stringify({ lessonId: "lesson-abc" }), { status: 202 })),
   );
 
   render(<App />);
   await user.type(screen.getByLabelText(/What do you want to understand/), "anything");
   await user.click(screen.getByRole("button", { name: /Generate/ }));
 
-  await waitFor(() => expect(screen.getByText(/Beat 1 of/)).toBeInTheDocument());
+  await waitFor(() => expect(screen.getByText(/Planning your lesson/)).toBeInTheDocument());
+
+  const source = FakeEventSource.latest();
+  expect(source.url).toContain("/api/lessons/lesson-abc/stream");
+
+  act(() => source.emit("outline_ready", { outline: lesson.outline }));
+  await waitFor(() => expect(screen.getByText(lesson.outline.title)).toBeInTheDocument());
+  // Beat 1 hasn't arrived yet — the player shows the "preparing" placeholder.
+  expect(screen.getByText(/Still preparing this part/)).toBeInTheDocument();
+
+  act(() => source.emit("beat_ready", { index: 0, beat: lesson.beats[0] }));
+  await waitFor(() =>
+    expect(screen.getByText(lesson.beats[0].narration.text)).toBeInTheDocument(),
+  );
+
+  for (let i = 1; i < lesson.beats.length; i++) {
+    act(() => source.emit("beat_ready", { index: i, beat: lesson.beats[i] }));
+  }
+  act(() => source.emit("lesson_complete", { lessonId: "lesson-abc" }));
+  expect(source.closed).toBe(true);
 });
 
-test("shows an error when generation fails", async () => {
+test("shows an error when lesson creation is rejected", async () => {
   const user = userEvent.setup();
   vi.stubGlobal(
     "fetch",
-    vi.fn(async () => new Response(JSON.stringify({ detail: "No API key configured" }), { status: 503 })),
+    vi.fn(
+      async () =>
+        new Response(JSON.stringify({ detail: "No API key configured" }), { status: 503 }),
+    ),
   );
 
   render(<App />);
@@ -59,4 +87,21 @@ test("shows an error when generation fails", async () => {
   await user.click(screen.getByRole("button", { name: /Generate/ }));
 
   await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent("No API key configured"));
+});
+
+test("shows an error when the lesson fails mid-generation", async () => {
+  const user = userEvent.setup();
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async () => new Response(JSON.stringify({ lessonId: "lesson-xyz" }), { status: 202 })),
+  );
+
+  render(<App />);
+  await user.type(screen.getByLabelText(/What do you want to understand/), "entropy");
+  await user.click(screen.getByRole("button", { name: /Generate/ }));
+  await waitFor(() => expect(FakeEventSource.instances.length).toBe(1));
+
+  act(() => FakeEventSource.latest().emit("lesson_failed", { error: "No Anthropic API key" }));
+
+  await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent("No Anthropic API key"));
 });
