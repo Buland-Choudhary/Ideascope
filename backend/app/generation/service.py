@@ -1,10 +1,12 @@
 """Generation orchestration — the entry point the API calls.
 
-Phase 3 added the plan stage; Phase 4 adds per-beat scene generation, so real
-mode now returns a fully generated, playable lesson (beat code exists, but is
-not yet execution-checked — that's Phase 5's Playwright validation pipeline).
-Beats generate sequentially within the request for now; JIT/SSE delivery so the
-learner sees beat 1 immediately is Phase 6.
+Phase 3 added the plan stage; Phase 4 added per-beat scene generation; Phase 5
+adds the validation pipeline, so real mode now returns a lesson whose beats
+have each been render-checked, auto-fixed, and vision-critiqued — or gracefully
+degraded to a reliable text fallback rather than shipping something broken
+(docs/PLAN.md §5.2 steps 3-5). Beats generate and validate sequentially within
+the request for now; JIT/SSE delivery so the learner sees beat 1 immediately is
+Phase 6.
 """
 
 import uuid
@@ -18,12 +20,14 @@ from app.generation.schema import LessonPlan
 from app.models import (
     Beat,
     BeatStatus,
+    BeatValidation,
     Lesson,
     LessonParams,
     Narration,
     Outline,
     Scene,
 )
+from app.validation.pipeline import validate_beat
 
 
 class GenerationUnavailableError(RuntimeError):
@@ -59,8 +63,9 @@ def generate_lesson(settings: Settings, *, topic: str, params: LessonParams) -> 
     """Generate a lesson for the given topic.
 
     In mock mode returns a complete, playable fixture. In real mode runs the
-    plan stage, then generates each beat's scene code, returning a complete,
-    playable (but not yet execution-validated) lesson.
+    plan stage, generates each beat's scene code, then validates it — render
+    check + auto-fix + vision critique, or graceful degradation — so every
+    returned beat is safe to show a learner (docs/PLAN.md §5.2).
     """
     if settings.mock_generation:
         # Imported lazily so mock mode has no dependency on the generation path.
@@ -82,7 +87,16 @@ def generate_lesson(settings: Settings, *, topic: str, params: LessonParams) -> 
         code = generate_beat_scene(
             client, settings, beat=beat_plan, lesson_id=lesson.id, beat_index=i
         )
-        beat.scene = Scene(code=code)
-        beat.status = BeatStatus.READY
+        validated = validate_beat(
+            client, settings, beat_plan=beat_plan, code=code, lesson_id=lesson.id, beat_index=i
+        )
+        beat.scene = Scene(code=validated.code)
+        beat.status = validated.status
+        beat.validation = BeatValidation(
+            render_ok=validated.render_ok,
+            auto_fix_attempts=validated.auto_fix_attempts,
+            critique_pass=validated.critique_pass,
+            critique_feedback=validated.critique_feedback,
+        )
 
     return lesson
