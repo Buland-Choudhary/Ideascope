@@ -1,20 +1,32 @@
-"""Lesson generation endpoint (docs/PLAN.md §5.1).
-
-Phase 3 is synchronous: ``POST /api/lessons`` returns a lesson directly. The
-just-in-time / SSE-streaming version (return ``{lessonId}``, then stream
-``beat_ready`` events) arrives in Phase 6.
+"""Lesson generation endpoints (docs/PLAN.md §5.1) — the just-in-time /
+SSE-streaming surface. ``POST /api/lessons`` kicks off generation in the
+background and returns ``{lessonId}`` immediately; the beats themselves
+arrive over ``GET /api/lessons/{id}/stream`` as they're generated and
+validated, so the learner sees beat 1 without waiting for the whole lesson.
 """
 
-from fastapi import APIRouter, HTTPException
+import asyncio
+import json
+import time
+from collections.abc import AsyncIterator
+
+from fastapi import APIRouter, BackgroundTasks, HTTPException
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from app.config import get_settings
-from app.generation.beat import BeatGenerationError
-from app.generation.plan import PlanGenerationError
-from app.generation.service import GenerationUnavailableError, generate_lesson
-from app.models import Difficulty, Duration, Lesson, LessonParams, Tone
+from app.generation.orchestrator import run_lesson_generation
+from app.models import Beat, CamelModel, Difficulty, Duration, Lesson, LessonParams, Tone
+from app.state import LessonState, get_lesson_store
 
 router = APIRouter()
+
+# SSE keepalive so proxies/hosts don't kill an idle-looking long-lived
+# connection while a beat is still generating (docs/PLAN.md §9).
+_KEEPALIVE_SECONDS = 15.0
+_POLL_INTERVAL_SECONDS = 0.25
+
+_TERMINAL_EVENTS = {"lesson_complete", "lesson_failed"}
 
 
 class GenerateLessonRequest(BaseModel):
@@ -26,8 +38,41 @@ class GenerateLessonRequest(BaseModel):
     tone: Tone | None = None
 
 
-@router.post("/api/lessons", response_model=Lesson)
-def create_lesson(request: GenerateLessonRequest) -> Lesson:
+class CreateLessonResponse(CamelModel):
+    lesson_id: str
+
+
+class LessonStateResponse(CamelModel):
+    lesson_id: str
+    status: str
+    error: str | None = None
+    lesson: Lesson | None = None
+
+
+def _require_generation_available() -> None:
+    settings = get_settings()
+    if not settings.mock_generation and not settings.anthropic_api_key:
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "No Anthropic API key configured. Set IDEASCOPE_ANTHROPIC_API_KEY "
+                "(or ANTHROPIC_API_KEY), or run with IDEASCOPE_MOCK_GENERATION=true."
+            ),
+        )
+
+
+def _get_state_or_404(lesson_id: str) -> LessonState:
+    state = get_lesson_store().get(lesson_id)
+    if state is None:
+        raise HTTPException(status_code=404, detail=f"Unknown lesson id: {lesson_id!r}")
+    return state
+
+
+@router.post("/api/lessons", response_model=CreateLessonResponse, status_code=202)
+def create_lesson(
+    request: GenerateLessonRequest, background_tasks: BackgroundTasks
+) -> CreateLessonResponse:
+    _require_generation_available()
     settings = get_settings()
     params = LessonParams(
         duration=request.duration,
@@ -35,9 +80,64 @@ def create_lesson(request: GenerateLessonRequest) -> Lesson:
         prior_knowledge=request.prior_knowledge,
         tone=request.tone,
     )
-    try:
-        return generate_lesson(settings, topic=request.topic.strip(), params=params)
-    except GenerationUnavailableError as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
-    except (PlanGenerationError, BeatGenerationError) as exc:
-        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    state = get_lesson_store().create()
+    background_tasks.add_task(
+        run_lesson_generation, settings, state, topic=request.topic.strip(), params=params
+    )
+    return CreateLessonResponse(lesson_id=state.lesson_id)
+
+
+@router.get("/api/lessons/{lesson_id}", response_model=LessonStateResponse)
+def get_lesson_state(lesson_id: str) -> LessonStateResponse:
+    """Full current known state — for SSE-reconnect and debugging."""
+    state = _get_state_or_404(lesson_id)
+    return LessonStateResponse(
+        lesson_id=state.lesson_id, status=state.status, error=state.error, lesson=state.lesson
+    )
+
+
+@router.get("/api/lessons/{lesson_id}/beats/{index}", response_model=Beat)
+def get_lesson_beat(lesson_id: str, index: int) -> Beat:
+    """Single beat detail — a fallback if a client missed an SSE event."""
+    state = _get_state_or_404(lesson_id)
+    if state.lesson is None or index < 0 or index >= len(state.lesson.beats):
+        raise HTTPException(status_code=404, detail=f"No beat {index} for lesson {lesson_id!r}")
+    return state.lesson.beats[index]
+
+
+def _json_lines(data: object) -> list[str]:
+    # SSE "data:" fields can't contain a bare newline; json.dumps without
+    # indentation never produces one, but split defensively in case that ever
+    # changes (e.g. someone adds indent= while debugging).
+    return json.dumps(data).split("\n")
+
+
+async def _event_stream(state: LessonState) -> AsyncIterator[bytes]:
+    last_seq = 0
+    last_sent = time.monotonic()
+    while True:
+        events = state.events_since(last_seq)
+        for evt in events:
+            last_seq = evt.seq + 1
+            yield f"event: {evt.event}\n".encode()
+            for line in _json_lines(evt.data):
+                yield f"data: {line}\n".encode()
+            yield b"\n"
+            last_sent = time.monotonic()
+        if events and events[-1].event in _TERMINAL_EVENTS:
+            return
+        if not events:
+            if time.monotonic() - last_sent >= _KEEPALIVE_SECONDS:
+                yield b": keepalive\n\n"
+                last_sent = time.monotonic()
+            await asyncio.sleep(_POLL_INTERVAL_SECONDS)
+
+
+@router.get("/api/lessons/{lesson_id}/stream")
+async def stream_lesson(lesson_id: str) -> StreamingResponse:
+    state = _get_state_or_404(lesson_id)
+    return StreamingResponse(
+        _event_stream(state),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )

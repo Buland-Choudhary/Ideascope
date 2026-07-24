@@ -99,3 +99,14 @@ export interface Lesson {
   outline: Outline;
   beats: Beat[];
 }
+
+/** Generation lifecycle for a just-in-time lesson (docs/PLAN.md §5.1, Phase 6). */
+export type GenerationStatus = "generating" | "complete" | "failed";
+
+/**
+ * What the player needs while a lesson is being generated just-in-time: the
+ * outline (and its `targetBeatCount`) plus however many beats have arrived so
+ * far — which may be fewer than `targetBeatCount` while `beats.length <
+ * outline.targetBeatCount` and `status` is still `"generating"`.
+ */
+export type PlayableLesson = Pick<Lesson, "id" | "outline" | "beats">;
