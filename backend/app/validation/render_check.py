@@ -18,9 +18,13 @@ class RenderCheckResult:
     error: str | None = None
     screenshot: bytes | None = None
     # Second screenshot after simulating a manipulable change, if any (§5.2
-    # step 4). Captured for defense-in-depth; not yet fed to the vision
-    # critique (see pipeline.py) — an intentional Phase-5 scope cut.
+    # step 4), plus which param/value produced it — so the vision critique
+    # (app/validation/critique.py, Phase 7) can judge whether the interaction
+    # visibly and correctly changed the rendering, not just that the initial
+    # frame looks right.
     interaction_screenshot: bytes | None = None
+    interaction_param: str | None = None
+    interaction_value: object | None = None
 
 
 def _first_manipulable_alternate_value(manipulables: list[Any]) -> tuple[str, object] | None:
@@ -93,6 +97,7 @@ def render_check(
         screenshot = page.locator("#scene").screenshot()
 
         interaction_screenshot = None
+        interaction_param = interaction_value = None
         alt = _first_manipulable_alternate_value(manipulables or [])
         if alt is not None:
             param, value = alt
@@ -106,7 +111,12 @@ def render_check(
                     ok=False, error=post_status.get("message", "error during interaction")
                 )
             interaction_screenshot = page.locator("#scene").screenshot()
+            interaction_param, interaction_value = param, value
 
         return RenderCheckResult(
-            ok=True, screenshot=screenshot, interaction_screenshot=interaction_screenshot
+            ok=True,
+            screenshot=screenshot,
+            interaction_screenshot=interaction_screenshot,
+            interaction_param=interaction_param,
+            interaction_value=interaction_value,
         )

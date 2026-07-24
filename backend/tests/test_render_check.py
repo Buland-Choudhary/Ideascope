@@ -108,3 +108,5 @@ def test_svg_scene_with_manipulable_interaction() -> None:
     assert result.interaction_screenshot is not None
     # Interacting should actually change the rendered pixels.
     assert result.interaction_screenshot != result.screenshot
+    assert result.interaction_param == "radius"
+    assert result.interaction_value != 10  # moved away from the default

@@ -48,6 +48,36 @@ def _validate(**overrides: object) -> pipeline_module.ValidatedBeat:
     return pipeline_module.validate_beat(**kwargs)  # type: ignore[arg-type]
 
 
+def test_interaction_screenshot_and_metadata_pass_through_to_critique(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        pipeline_module,
+        "render_check",
+        lambda **kw: RenderCheckResult(
+            ok=True,
+            screenshot=b"before",
+            interaction_screenshot=b"after",
+            interaction_param="amplitude",
+            interaction_value=90,
+        ),
+    )
+    captured: dict[str, object] = {}
+
+    def fake_critique(*a: object, **kw: object) -> Critique:
+        captured.update(kw)
+        return Critique(passed=True, feedback="ok")
+
+    monkeypatch.setattr(pipeline_module, "critique_screenshot", fake_critique)
+
+    result = _validate()
+
+    assert result.status == BeatStatus.READY
+    assert captured["interaction_screenshot"] == b"after"
+    assert captured["interaction_param"] == "amplitude"
+    assert captured["interaction_value"] == 90
+
+
 def test_happy_path_renders_and_passes_critique(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(pipeline_module, "render_check", lambda **kw: _ok_render())
     monkeypatch.setattr(

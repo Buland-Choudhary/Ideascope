@@ -145,6 +145,9 @@ def validate_beat(
             narration=beat_plan.narration,
             lesson_id=lesson_id,
             beat_index=beat_index,
+            interaction_screenshot=render_result.interaction_screenshot,
+            interaction_param=render_result.interaction_param,
+            interaction_value=render_result.interaction_value,
         )
         if critique is None:
             # The critique call itself failed (infra, not quality) — the scene
