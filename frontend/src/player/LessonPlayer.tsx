@@ -3,6 +3,7 @@ import { useEffect } from "react";
 import { SceneRenderer } from "../engines/SceneRenderer";
 import type { GenerationStatus, PlayableLesson } from "../types/lesson";
 import { ManipulableControls } from "./ManipulableControls";
+import { useNarrationSpeech } from "./useNarrationSpeech";
 import { usePlayerState } from "./usePlayerState";
 
 function isTypingTarget(target: EventTarget | null): boolean {
@@ -20,6 +21,7 @@ interface LessonPlayerProps {
 
 export function LessonPlayer({ lesson, generationStatus = "complete", onExit }: LessonPlayerProps) {
   const player = usePlayerState(lesson);
+  const narration = useNarrationSpeech();
 
   // Keyboard advance (docs/PLAN.md §6.4). Space / → advance, ← back — but not
   // while the learner is interacting with a manipulable control.
@@ -38,6 +40,14 @@ export function LessonPlayer({ lesson, generationStatus = "complete", onExit }: 
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [player]);
 
+  // Reads the current beat aloud when narration is on — on the beat changing
+  // (navigation, or one streaming in) and when the learner toggles it on
+  // (docs/PLAN.md §6.1: "toggle drives whether SpeechSynthesis.speak() fires
+  // alongside" the always-visible narration text).
+  useEffect(() => {
+    if (player.beat) narration.speak(player.beat.narration.text);
+  }, [player.beat, narration]);
+
   return (
     <section className="mx-auto flex max-w-3xl flex-col gap-4 p-6">
       <header className="flex items-baseline justify-between">
@@ -47,15 +57,27 @@ export function LessonPlayer({ lesson, generationStatus = "complete", onExit }: 
             Beat {player.index + 1} of {player.total}
           </p>
         </div>
-        {onExit && (
+        <div className="flex items-center gap-4">
           <button
             type="button"
-            onClick={onExit}
-            className="text-sm text-gray-500 underline hover:text-gray-800"
+            onClick={narration.toggle}
+            disabled={!narration.supported}
+            aria-pressed={narration.enabled}
+            title={narration.supported ? undefined : "Narration isn't supported in this browser"}
+            className="rounded-md border border-gray-200 px-3 py-1.5 text-sm text-gray-600 enabled:hover:bg-gray-100 disabled:opacity-40"
           >
-            ← All lessons
+            {narration.enabled ? "🔊 Narration on" : "🔇 Narration off"}
           </button>
-        )}
+          {onExit && (
+            <button
+              type="button"
+              onClick={onExit}
+              className="text-sm text-gray-500 underline hover:text-gray-800"
+            >
+              ← All lessons
+            </button>
+          )}
+        </div>
       </header>
 
       {player.beat ? (
