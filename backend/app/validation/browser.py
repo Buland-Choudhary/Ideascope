@@ -13,12 +13,23 @@ cross-request concurrency cap.
 """
 
 import contextlib
+import os
 import threading
 from collections.abc import Iterator
 
 from playwright.sync_api import Browser, Page, Playwright, ViewportSize, sync_playwright
 
-_CHROMIUM_EXECUTABLE = "/opt/pw-browsers/chromium-1194/chrome-linux/chrome"
+# This CI/sandbox environment ships a preinstalled Chromium at a fixed path
+# (faster than a fresh `playwright install` per session). A normal checkout —
+# e.g. a developer's laptop — won't have this path; there, ``executable_path``
+# is left as ``None`` so Playwright falls back to its own browser, installed
+# via `playwright install chromium` (see backend/README.md).
+_SANDBOX_CHROMIUM = "/opt/pw-browsers/chromium-1194/chrome-linux/chrome"
+
+
+def _chromium_executable_path() -> str | None:
+    return _SANDBOX_CHROMIUM if os.path.exists(_SANDBOX_CHROMIUM) else None
+
 
 _lock = threading.Lock()
 _playwright_ctx: Playwright | None = None
@@ -32,7 +43,7 @@ def _ensure_started(max_concurrent: int) -> Browser:
         if _browser is None:
             _playwright_ctx = sync_playwright().start()
             _browser = _playwright_ctx.chromium.launch(
-                executable_path=_CHROMIUM_EXECUTABLE,
+                executable_path=_chromium_executable_path(),
                 args=["--no-sandbox"],
             )
             _semaphore = threading.Semaphore(max_concurrent)
