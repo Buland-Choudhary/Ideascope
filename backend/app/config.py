@@ -44,6 +44,11 @@ class Settings(BaseSettings):
     # Comma-separated in the env var; defaults to local Vite dev.
     cors_origins: str = "http://localhost:5173"
 
+    # IP-based cap on lesson generation (docs/PLAN.md §5.4) — bounds worst-case
+    # Anthropic spend from a single abusive client. A `slowapi`/`limits` rate
+    # string, e.g. "20/hour".
+    lessons_rate_limit: str = "20/hour"
+
     @property
     def cors_origin_list(self) -> list[str]:
         return [origin.strip() for origin in self.cors_origins.split(",") if origin.strip()]

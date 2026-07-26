@@ -104,6 +104,57 @@ def test_empty_topic_rejected() -> None:
     assert resp.status_code == 422
 
 
+def test_whitespace_only_topic_rejected() -> None:
+    # A regression check: `min_length=1` alone passes on pure whitespace
+    # (it's checked before stripping), which used to sail through and start
+    # generating a lesson for an empty topic.
+    for junk_topic in [" ", "\t\t\t", "   \n  "]:
+        resp = client.post("/api/lessons", json={"topic": junk_topic})
+        assert resp.status_code == 422, f"{junk_topic!r} should have been rejected"
+
+
+def test_topic_is_trimmed_before_generation(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("IDEASCOPE_MOCK_GENERATION", "true")
+    get_settings.cache_clear()
+
+    resp = client.post("/api/lessons", json={"topic": "  the water cycle  "})
+    assert resp.status_code == 202
+
+
+def test_gibberish_topic_still_produces_a_schema_valid_lesson(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Junk input should never crash the pipeline — structured outputs make the
+    # response schema-valid regardless of what the model does with a
+    # nonsensical topic (docs/PLAN.md §7 prompt-injection resistance).
+    monkeypatch.setenv("IDEASCOPE_MOCK_GENERATION", "true")
+    get_settings.cache_clear()
+
+    lesson_id = client.post(
+        "/api/lessons", json={"topic": "asdkj qwoeiu !!! ??? 12345 xzcv"}
+    ).json()["lessonId"]
+    stream = client.get(f"/api/lessons/{lesson_id}/stream")
+    assert stream.status_code == 200
+    assert "lesson_complete" in stream.text
+
+
+def test_rate_limit_returns_429_after_exceeding_the_cap(monkeypatch: pytest.MonkeyPatch) -> None:
+    from app.rate_limit import limiter
+
+    monkeypatch.setenv("IDEASCOPE_MOCK_GENERATION", "true")
+    monkeypatch.setenv("IDEASCOPE_LESSONS_RATE_LIMIT", "2/hour")
+    get_settings.cache_clear()
+    limiter.reset()
+    try:
+        for _ in range(2):
+            resp = client.post("/api/lessons", json={"topic": "how a sine wave works"})
+            assert resp.status_code == 202
+        blocked = client.post("/api/lessons", json={"topic": "how a sine wave works"})
+        assert blocked.status_code == 429
+    finally:
+        limiter.reset()
+
+
 def test_real_mode_without_key_returns_503(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("IDEASCOPE_ANTHROPIC_API_KEY", raising=False)
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)

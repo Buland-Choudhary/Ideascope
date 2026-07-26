@@ -10,13 +10,14 @@ import json
 import time
 from collections.abc import AsyncIterator
 
-from fastapi import APIRouter, BackgroundTasks, HTTPException
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Request
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from app.config import get_settings
 from app.generation.orchestrator import run_lesson_generation
 from app.models import Beat, CamelModel, Difficulty, Duration, Lesson, LessonParams, Tone
+from app.rate_limit import limiter
 from app.state import LessonState, get_lesson_store
 
 router = APIRouter()
@@ -30,12 +31,22 @@ _TERMINAL_EVENTS = {"lesson_complete", "lesson_failed"}
 
 
 class GenerateLessonRequest(BaseModel):
-    # Topic length cap (docs/PLAN.md §5.4); empty topics rejected.
+    # Topic length cap (docs/PLAN.md §5.4); empty (or whitespace-only) topics
+    # rejected. Stripped *before* the length check — otherwise a string of
+    # pure whitespace passes `min_length=1` and only becomes empty later.
     topic: str = Field(min_length=1, max_length=300)
     duration: Duration = Duration.MEDIUM
     difficulty: Difficulty | None = None
     prior_knowledge: str | None = Field(default=None, max_length=500)
     tone: Tone | None = None
+
+    @field_validator("topic")
+    @classmethod
+    def _strip_topic(cls, value: str) -> str:
+        stripped = value.strip()
+        if not stripped:
+            raise ValueError("topic must not be empty or whitespace-only")
+        return stripped
 
 
 class CreateLessonResponse(CamelModel):
@@ -69,20 +80,21 @@ def _get_state_or_404(lesson_id: str) -> LessonState:
 
 
 @router.post("/api/lessons", response_model=CreateLessonResponse, status_code=202)
+@limiter.limit(lambda: get_settings().lessons_rate_limit)
 def create_lesson(
-    request: GenerateLessonRequest, background_tasks: BackgroundTasks
+    request: Request, body: GenerateLessonRequest, background_tasks: BackgroundTasks
 ) -> CreateLessonResponse:
     _require_generation_available()
     settings = get_settings()
     params = LessonParams(
-        duration=request.duration,
-        difficulty=request.difficulty,
-        prior_knowledge=request.prior_knowledge,
-        tone=request.tone,
+        duration=body.duration,
+        difficulty=body.difficulty,
+        prior_knowledge=body.prior_knowledge,
+        tone=body.tone,
     )
     state = get_lesson_store().create()
     background_tasks.add_task(
-        run_lesson_generation, settings, state, topic=request.topic.strip(), params=params
+        run_lesson_generation, settings, state, topic=body.topic, params=params
     )
     return CreateLessonResponse(lesson_id=state.lesson_id)
 

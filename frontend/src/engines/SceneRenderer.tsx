@@ -34,16 +34,29 @@ export function SceneRenderer({ beat, params }: SceneRendererProps) {
   // Capture the param values at the moment the beat mounts so they can be
   // embedded as the scene's initial state; later changes arrive via messages.
   const initialParamsRef = useRef(params);
-  const srcDoc = useMemo(() => {
-    if (!scan.ok) return "";
-    return buildSceneDocument({
+  const [srcDoc, setSrcDoc] = useState("");
+
+  // buildSceneDocument is async (p5 loads via a dynamic import, only for
+  // canvas scenes — see sceneRuntime.ts); the "loading" status below already
+  // covers this wait, same as it covers the iframe's own ready() signal.
+  useEffect(() => {
+    if (!scan.ok) {
+      setSrcDoc("");
+      return;
+    }
+    let cancelled = false;
+    buildSceneDocument({
       engine: beat.engine,
       code: beat.scene.code,
       params: initialParamsRef.current,
       reducedMotion: prefersReducedMotion(),
+    }).then((doc) => {
+      if (!cancelled) setSrcDoc(doc);
     });
-    // Rebuild only per beat; initialParamsRef is read at build time.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    return () => {
+      cancelled = true;
+    };
+    // Rebuild only per beat; initialParamsRef (a ref) is read at build time.
   }, [beat.id, beat.engine, beat.scene.code, scan.ok]);
 
   // Reset status when the beat (and thus the iframe) changes.

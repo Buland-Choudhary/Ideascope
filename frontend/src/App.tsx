@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { createLesson, streamLesson } from "./api/lessons";
 import { FIXTURES } from "./fixtures";
@@ -89,7 +89,9 @@ function PreparingOutline({ onCancel }: { onCancel: () => void }) {
   return (
     <main className="mx-auto flex min-h-screen max-w-2xl flex-col items-center justify-center gap-4 p-8 text-center">
       <div className="h-8 w-8 animate-spin rounded-full border-2 border-gray-300 border-t-gray-600" />
-      <p className="text-gray-600">Planning your lesson…</p>
+      <p className="text-gray-600" role="status" aria-live="polite">
+        Planning your lesson…
+      </p>
       <button type="button" onClick={onCancel} className="text-sm text-gray-500 underline">
         Cancel
       </button>
@@ -121,10 +123,16 @@ function Landing({
   const [duration, setDuration] = useState<Duration>("medium");
   const [status, setStatus] = useState<"idle" | "generating" | "error">("idle");
   const [error, setError] = useState<string | null>(null);
+  // A ref guard, not just the disabled attribute: several submit events fired
+  // in the same tick (a fast double/triple-click, or Enter mashed on the
+  // button) can all reach this handler before React re-renders the DOM with
+  // the button disabled, since that round-trips through a state update.
+  const submittingRef = useRef(false);
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!topic.trim()) return;
+    if (!topic.trim() || submittingRef.current) return;
+    submittingRef.current = true;
     setStatus("generating");
     setError(null);
     try {
@@ -133,6 +141,8 @@ function Landing({
     } catch (err) {
       setStatus("error");
       setError(err instanceof Error ? err.message : "Something went wrong");
+    } finally {
+      submittingRef.current = false;
     }
   }
 
@@ -147,7 +157,7 @@ function Landing({
         <label htmlFor="topic" className="text-sm font-medium text-gray-700">
           What do you want to understand?
         </label>
-        <div className="flex gap-2">
+        <div className="flex flex-col gap-2 sm:flex-row">
           <input
             id="topic"
             type="text"
@@ -156,26 +166,28 @@ function Landing({
             placeholder="e.g. how a sine wave works"
             maxLength={300}
             disabled={status === "generating"}
-            className="flex-1 rounded-lg border border-gray-300 px-3 py-2 focus:border-gray-500 focus:outline-none"
+            className="min-w-0 flex-1 rounded-lg border border-gray-300 px-3 py-2 focus:border-gray-500 focus:outline-none focus:ring-2 focus:ring-gray-400"
           />
-          <select
-            aria-label="Duration"
-            value={duration}
-            onChange={(e) => setDuration(e.target.value as Duration)}
-            disabled={status === "generating"}
-            className="rounded-lg border border-gray-300 px-2 py-2 text-sm"
-          >
-            <option value="short">Short</option>
-            <option value="medium">Medium</option>
-            <option value="long">Long</option>
-          </select>
-          <button
-            type="submit"
-            disabled={status === "generating" || !topic.trim()}
-            className="rounded-lg bg-gray-900 px-4 py-2 font-medium text-white enabled:hover:bg-gray-700 disabled:opacity-40"
-          >
-            {status === "generating" ? "Generating…" : "Generate"}
-          </button>
+          <div className="flex gap-2">
+            <select
+              aria-label="Duration"
+              value={duration}
+              onChange={(e) => setDuration(e.target.value as Duration)}
+              disabled={status === "generating"}
+              className="rounded-lg border border-gray-300 px-2 py-2 text-sm"
+            >
+              <option value="short">Short</option>
+              <option value="medium">Medium</option>
+              <option value="long">Long</option>
+            </select>
+            <button
+              type="submit"
+              disabled={status === "generating" || !topic.trim()}
+              className="flex-1 rounded-lg bg-gray-900 px-4 py-2 font-medium text-white enabled:hover:bg-gray-700 disabled:opacity-40 sm:flex-none"
+            >
+              {status === "generating" ? "Generating…" : "Generate"}
+            </button>
+          </div>
         </div>
         {status === "error" && error && (
           <p className="text-sm text-red-600" role="alert">
