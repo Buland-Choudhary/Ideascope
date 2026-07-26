@@ -1,0 +1,29 @@
+# Render Blueprint (docs/PLAN.md §13) — one-click "New +  Blueprint" import
+# picks this up automatically. Backend only; the frontend deploys separately
+# on Netlify (see frontend/netlify.toml).
+#
+# Deployment stage A (current): free plan, 512MB RAM, mock-mode-only backend
+# (backend/Dockerfile doesn't install the Chromium binary — see its header
+# comment). Free-tier services spin down after 15 min idle and take ~30-60s
+# to wake on the next request — acceptable for occasional checking, not for
+# a live demo.
+#
+# Deployment stage B (real generation): Render's free tier caps at 512MB,
+# too small for headless Chromium — this will need the `starter` ($7/mo,
+# 512MB — still short) or `standard` ($25/mo, 2GB) plan at that point, or a
+# move to a per-second-billed host (Fly.io was evaluated as a cheaper
+# alternative for that stage specifically). Revisit then, not now.
+services:
+  - type: web
+    name: ideascope-backend
+    runtime: docker
+    plan: free
+    rootDir: backend
+    dockerfilePath: backend/Dockerfile
+    dockerContext: backend
+    healthCheckPath: /api/health
+    envVars:
+      - key: IDEASCOPE_MOCK_GENERATION
+        value: "true"
+      - key: IDEASCOPE_CORS_ORIGINS
+        sync: false
