@@ -107,7 +107,7 @@ export function LessonPlayer({ lesson, generationStatus = "complete", onExit }: 
         >
           ← Back
         </button>
-        <span className="text-xs text-gray-400">Use ← → or Space to navigate</span>
+        <span className="hidden text-xs text-gray-400 sm:inline">Use ← → or Space to navigate</span>
         <button
           type="button"
           onClick={player.next}

@@ -72,6 +72,29 @@ test("generating a lesson streams the outline then each beat as it arrives", asy
   expect(source.closed).toBe(true);
 });
 
+test("rapid-fire clicks on Generate only submit once", async () => {
+  const user = userEvent.setup();
+  const fetchMock = vi.fn(
+    async () => new Response(JSON.stringify({ lessonId: "lesson-abc" }), { status: 202 }),
+  );
+  vi.stubGlobal("fetch", fetchMock);
+
+  render(<App />);
+  await user.type(screen.getByLabelText(/What do you want to understand/), "anything");
+
+  // Several submit events in the same tick — a real fast double/triple-click
+  // or Enter-mashing produces at least this. The button disabling via a state
+  // update round-trip isn't fast enough to block these; a synchronous ref
+  // guard in the submit handler is (see App.tsx's submittingRef).
+  const button = screen.getByRole("button", { name: /Generate/ });
+  act(() => {
+    for (let i = 0; i < 5; i++) button.click();
+  });
+
+  await waitFor(() => expect(screen.getByText(/Planning your lesson/)).toBeInTheDocument());
+  expect(fetchMock).toHaveBeenCalledTimes(1);
+});
+
 test("shows an error when lesson creation is rejected", async () => {
   const user = userEvent.setup();
   vi.stubGlobal(

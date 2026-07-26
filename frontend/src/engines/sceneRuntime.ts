@@ -7,11 +7,22 @@
  * and `postMessage` as the only channel. The runtime owns all engine
  * bootstrapping (p5 instance + draw loop, or the `<svg>` root) and calls the
  * scene's `export default createScene(ctx)` factory.
+ *
+ * p5 (~1 MB minified) is loaded via a dynamic import, not a static one, so it
+ * lands in its own chunk instead of inflating the main bundle every learner
+ * downloads regardless of whether their lesson ever uses a canvas scene
+ * (Phase 9 — deferred from Phase 2). The module-level promise below means the
+ * fetch+parse cost is paid at most once per session, on the first canvas beat.
  */
 
-import p5Source from "p5/lib/p5.min.js?raw";
-
 import type { Engine, ParamValue } from "../types/lesson";
+
+let p5SourcePromise: Promise<string> | null = null;
+
+function loadP5Source(): Promise<string> {
+  p5SourcePromise ??= import("p5/lib/p5.min.js?raw").then((mod) => mod.default);
+  return p5SourcePromise;
+}
 
 export interface SceneDocumentOptions {
   engine: Engine;
@@ -115,14 +126,14 @@ function escapeForScript(s: string): string {
   return s.replace(/<\//g, "<\\/");
 }
 
-export function buildSceneDocument(opts: SceneDocumentOptions): string {
+export async function buildSceneDocument(opts: SceneDocumentOptions): Promise<string> {
   const cfg = JSON.stringify({
     engine: opts.engine,
     params: opts.params,
     reducedMotion: opts.reducedMotion,
   });
   const sceneCodeLiteral = JSON.stringify(opts.code);
-  const p5Tag = opts.engine === "canvas" ? `<script>${p5Source}</script>` : "";
+  const p5Tag = opts.engine === "canvas" ? `<script>${await loadP5Source()}</script>` : "";
 
   const csp =
     "default-src 'none'; script-src 'unsafe-inline' blob:; style-src 'unsafe-inline'; img-src data:;";
