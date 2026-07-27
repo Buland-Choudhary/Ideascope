@@ -40,6 +40,14 @@ class Settings(BaseSettings):
     # Phase 3; declared here so the surface is stable.
     mock_generation: bool = False
 
+    # When true, real-mode generation skips the validation pipeline (render
+    # check/auto-fix + vision critique, docs/PLAN.md §5.2 steps 3-5) and ships
+    # each beat's generated code as-is. A deliberate, temporary cost/ops
+    # trade-off (no Chromium needed, no vision-critique spend) — see
+    # docs/PLAN.md's Phase 10 note for the rationale and what it gives up.
+    # The pipeline code itself is untouched; this only skips calling it.
+    skip_validation: bool = False
+
     # CORS allowlist for the frontend origin(s) (docs/PLAN.md §13).
     # Comma-separated in the env var; defaults to local Vite dev.
     cors_origins: str = "http://localhost:5173"

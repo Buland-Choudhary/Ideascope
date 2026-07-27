@@ -85,9 +85,45 @@ def test_generate_lesson_end_to_end(monkeypatch: pytest.MonkeyPatch) -> None:
     assert fake_client.messages.beat_calls == 3
 
 
+def test_generate_lesson_skip_validation_ships_code_unchecked(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """With skip_validation, a beat ships straight from generation — no
+    render-check/auto-fix/critique call, so a fake client that only ever
+    answers the plan/beat-code formats (and would raise on a Critique
+    request) proves validate_beat was never invoked."""
+    code = "export default (ctx) => { ctx.ready(); return {}; }"
+    # duration=short bands to 3-5 beats; the fake plan below has 3.
+    fake_client = FakeClient(_plan(3), code)
+    monkeypatch.setattr("app.generation.service.Anthropic", lambda api_key: fake_client)
+
+    settings = Settings(anthropic_api_key="sk-test", mock_generation=False, skip_validation=True)
+    lesson = generate_lesson(
+        settings,
+        topic="how something works",
+        params=LessonParams(duration=Duration.SHORT),
+    )
+
+    assert len(lesson.beats) == 3
+    for beat in lesson.beats:
+        assert beat.status == BeatStatus.READY
+        assert beat.scene.code == code
+        assert beat.validation is not None
+        assert beat.validation.render_ok is True
+        assert beat.validation.auto_fix_attempts == 0
+        assert beat.validation.critique_pass is None
+
+    assert fake_client.messages.plan_calls == 1
+    assert fake_client.messages.beat_calls == 3
+
+
 def test_generate_lesson_without_key_raises(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.delenv("IDEASCOPE_ANTHROPIC_API_KEY", raising=False)
-    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    # setenv to "", not delenv: Settings reads backend/.env directly (a lower-
+    # priority source than a real env var, but higher than the field default),
+    # so merely deleting the env var still lets a real key in .env leak
+    # through — an empty env var actually wins that source-priority fight.
+    monkeypatch.setenv("IDEASCOPE_ANTHROPIC_API_KEY", "")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "")
     settings = Settings(mock_generation=False)
     with pytest.raises(GenerationUnavailableError):
         generate_lesson(settings, topic="t", params=LessonParams())

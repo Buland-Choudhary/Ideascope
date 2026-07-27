@@ -2,17 +2,21 @@
 # picks this up automatically. Backend only; the frontend deploys separately
 # on Netlify (see frontend/netlify.toml).
 #
-# Deployment stage A (current): free plan, 512MB RAM, mock-mode-only backend
-# (backend/Dockerfile doesn't install the Chromium binary — see its header
-# comment). Free-tier services spin down after 15 min idle and take ~30-60s
-# to wake on the next request — acceptable for occasional checking, not for
-# a live demo.
+# Real generation, validation pipeline skipped (docs/PLAN.md Phase 10 note):
+# IDEASCOPE_SKIP_VALIDATION=true means beats ship straight from Claude with
+# no render-check/auto-fix/vision-critique — no Chromium needed, so this
+# still fits Render's free 512MB tier even in real mode. Free-tier services
+# spin down after 15 min idle (~30-60s cold start on wake) — fine for
+# occasional checking, not for a live demo.
 #
-# Deployment stage B (real generation): Render's free tier caps at 512MB,
-# too small for headless Chromium — this will need the `starter` ($7/mo,
-# 512MB — still short) or `standard` ($25/mo, 2GB) plan at that point, or a
-# move to a per-second-billed host (Fly.io was evaluated as a cheaper
-# alternative for that stage specifically). Revisit then, not now.
+# IDEASCOPE_LESSONS_RATE_LIMIT tightened from the app default (20/hour) given
+# the small $5 Anthropic credit budget — bounds worst-case spend from a
+# single IP to a fraction of that budget per hour instead of exceeding it.
+#
+# If validation is ever turned back on (set IDEASCOPE_SKIP_VALIDATION=false):
+# switch the Dockerfile's base image to include Chromium and move off the
+# free plan (512MB is too small) — `starter` is still only 512MB, so
+# realistically `standard` ($25/mo, 2GB), or reconsider Fly.io (~$5.70/mo).
 services:
   - type: web
     name: ideascope-backend
@@ -24,6 +28,12 @@ services:
     healthCheckPath: /api/health
     envVars:
       - key: IDEASCOPE_MOCK_GENERATION
+        value: "false"
+      - key: IDEASCOPE_SKIP_VALIDATION
         value: "true"
+      - key: IDEASCOPE_LESSONS_RATE_LIMIT
+        value: "5/hour"
+      - key: IDEASCOPE_ANTHROPIC_API_KEY
+        sync: false
       - key: IDEASCOPE_CORS_ORIGINS
         sync: false

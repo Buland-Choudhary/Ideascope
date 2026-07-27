@@ -81,8 +81,11 @@ def test_mock_mode_streams_a_complete_fixture() -> None:
 
 
 def test_fails_immediately_without_an_api_key(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.delenv("IDEASCOPE_ANTHROPIC_API_KEY", raising=False)
-    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    # setenv to "", not delenv — see the comment in test_service.py's
+    # equivalent test: delenv alone doesn't stop a real key in backend/.env
+    # from leaking through as a lower-priority Settings source.
+    monkeypatch.setenv("IDEASCOPE_ANTHROPIC_API_KEY", "")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "")
     state = LessonStore().create()
     settings = Settings(mock_generation=False)
 

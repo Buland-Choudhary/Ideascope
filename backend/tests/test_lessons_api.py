@@ -156,8 +156,11 @@ def test_rate_limit_returns_429_after_exceeding_the_cap(monkeypatch: pytest.Monk
 
 
 def test_real_mode_without_key_returns_503(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.delenv("IDEASCOPE_ANTHROPIC_API_KEY", raising=False)
-    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    # setenv to "", not delenv — see the comment in test_service.py's
+    # equivalent test: delenv alone doesn't stop a real key in backend/.env
+    # from leaking through as a lower-priority Settings source.
+    monkeypatch.setenv("IDEASCOPE_ANTHROPIC_API_KEY", "")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "")
     monkeypatch.setenv("IDEASCOPE_MOCK_GENERATION", "false")
     get_settings.cache_clear()
 

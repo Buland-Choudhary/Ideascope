@@ -94,6 +94,24 @@ def generate_and_validate_beat(
             ),
         )
 
+    if settings.skip_validation:
+        # Deliberate cost/ops trade-off (docs/PLAN.md Phase 10 note): ship the
+        # generated code straight through, with no render-check/auto-fix/
+        # critique. render_ok=True here means "not checked", not "confirmed" —
+        # the client-side sandboxed iframe still catches genuine render
+        # errors at runtime (engines/SceneRenderer.tsx), just without server-
+        # side auto-fix or a pedagogy gate.
+        log_generation_event(
+            "beat", "skipped_validation", lesson_id=lesson_id, beat_index=beat_index
+        )
+        return (
+            Scene(code=code),
+            BeatStatus.READY,
+            BeatValidation(
+                render_ok=True, auto_fix_attempts=0, critique_pass=None, critique_feedback=None
+            ),
+        )
+
     validated = validate_beat(
         client,
         settings,

@@ -74,6 +74,7 @@ Environment variables (prefix `IDEASCOPE_`, or a `.env` file):
 |---|---|---|
 | `IDEASCOPE_ANTHROPIC_API_KEY` | _(unset)_ | Anthropic API key — server-side only. Also read from `ANTHROPIC_API_KEY`. |
 | `IDEASCOPE_MOCK_GENERATION` | `false` | Serve fixture lessons instead of calling Anthropic (§1). |
+| `IDEASCOPE_SKIP_VALIDATION` | `false` | Skip the render-check/auto-fix/vision-critique pipeline in real mode — ships each beat's generated code as-is, no Chromium needed. Deliberate cost/ops trade-off; see `docs/PLAN.md`'s Phase 10 note. |
 | `IDEASCOPE_PLAN_MODEL` | `claude-opus-4-8` | Model for the plan stage. |
 | `IDEASCOPE_BEAT_MODEL` | `claude-opus-4-8` | Model for per-beat scene generation. |
 | `IDEASCOPE_AUTO_FIX_MODEL` | `claude-haiku-4-5` | Model for repairing a beat that fails to render. |
