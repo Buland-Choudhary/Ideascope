@@ -27,7 +27,13 @@ class Settings(BaseSettings):
 
     # Model roles (docs/PLAN.md §1). Overridable via env for experiments.
     plan_model: str = "claude-opus-4-8"
-    beat_model: str = "claude-opus-4-8"
+    # Beat calls dominate per-lesson spend (long code-generation output, N per
+    # lesson vs. one plan call) — claude-sonnet-5 cuts that ~40% (output-token
+    # price is the bulk of the cost) vs. opus, still a strong coding model, so
+    # this is the default cost lever with skip_validation on (docs/PLAN.md
+    # Phase 10 note) and no auto-fix/critique net to catch a bad generation.
+    # Set IDEASCOPE_BEAT_MODEL=claude-opus-4-8 to trade cost back for quality.
+    beat_model: str = "claude-sonnet-5"
     auto_fix_model: str = "claude-haiku-4-5"
     critique_model: str = "claude-opus-4-8"
 

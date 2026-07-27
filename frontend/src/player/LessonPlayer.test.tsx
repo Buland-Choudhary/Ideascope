@@ -66,3 +66,29 @@ test("the toggle disables itself when speechSynthesis isn't supported", () => {
   render(<LessonPlayer lesson={lesson} />);
   expect(screen.getByRole("button", { name: /Narration off/ })).toBeDisabled();
 });
+
+test("Done is enabled on the last beat and exits the lesson", async () => {
+  const user = userEvent.setup();
+  const onExit = vi.fn();
+  render(<LessonPlayer lesson={lesson} onExit={onExit} />);
+
+  for (let i = 0; i < lesson.beats.length - 1; i++) {
+    await user.click(screen.getByRole("button", { name: /Next/ }));
+  }
+
+  const doneButton = screen.getByRole("button", { name: "Done" });
+  expect(doneButton).toBeEnabled();
+  await user.click(doneButton);
+  expect(onExit).toHaveBeenCalledTimes(1);
+});
+
+test("Done is disabled on the last beat when there's no exit handler", async () => {
+  const user = userEvent.setup();
+  render(<LessonPlayer lesson={lesson} />);
+
+  for (let i = 0; i < lesson.beats.length - 1; i++) {
+    await user.click(screen.getByRole("button", { name: /Next/ }));
+  }
+
+  expect(screen.getByRole("button", { name: "Done" })).toBeDisabled();
+});

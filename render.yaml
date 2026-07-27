@@ -13,6 +13,19 @@
 # the small $5 Anthropic credit budget — bounds worst-case spend from a
 # single IP to a fraction of that budget per hour instead of exceeding it.
 #
+# IDEASCOPE_BEAT_MODEL pinned to claude-sonnet-5 (app default as of Phase-10-
+# hardening) rather than opus: beat calls (one per beat, long code-generation
+# output) dominate per-lesson spend, and sonnet cuts that ~40% while still
+# being a strong coding model — the main cost lever available given
+# skip_validation means there's no auto-fix/critique net to catch a bad
+# generation either way. Set back to claude-opus-4-8 to trade cost for quality.
+#
+# NOTE: editing this file does NOT change an already-deployed Render service's
+# env vars by itself — Render Blueprints apply on initial "New + Blueprint"
+# creation. For an existing service, either trigger a Blueprint sync from the
+# Render dashboard, or set the env var directly under the service's
+# Environment tab.
+#
 # If validation is ever turned back on (set IDEASCOPE_SKIP_VALIDATION=false):
 # switch the Dockerfile's base image to include Chromium and move off the
 # free plan (512MB is too small) — `starter` is still only 512MB, so
@@ -38,6 +51,8 @@ services:
         value: "true"
       - key: IDEASCOPE_LESSONS_RATE_LIMIT
         value: "5/hour"
+      - key: IDEASCOPE_BEAT_MODEL
+        value: "claude-sonnet-5"
       - key: IDEASCOPE_ANTHROPIC_API_KEY
         sync: false
       - key: IDEASCOPE_CORS_ORIGINS

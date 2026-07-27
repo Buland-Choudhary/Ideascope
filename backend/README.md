@@ -76,7 +76,7 @@ Environment variables (prefix `IDEASCOPE_`, or a `.env` file):
 | `IDEASCOPE_MOCK_GENERATION` | `false` | Serve fixture lessons instead of calling Anthropic (§1). |
 | `IDEASCOPE_SKIP_VALIDATION` | `false` | Skip the render-check/auto-fix/vision-critique pipeline in real mode — ships each beat's generated code as-is, no Chromium needed. Deliberate cost/ops trade-off; see `docs/PLAN.md`'s Phase 10 note. |
 | `IDEASCOPE_PLAN_MODEL` | `claude-opus-4-8` | Model for the plan stage. |
-| `IDEASCOPE_BEAT_MODEL` | `claude-opus-4-8` | Model for per-beat scene generation. |
+| `IDEASCOPE_BEAT_MODEL` | `claude-sonnet-5` | Model for per-beat scene generation — the main per-lesson cost driver (one call per beat, long output); set to `claude-opus-4-8` to trade cost for quality. |
 | `IDEASCOPE_AUTO_FIX_MODEL` | `claude-haiku-4-5` | Model for repairing a beat that fails to render. |
 | `IDEASCOPE_CRITIQUE_MODEL` | `claude-opus-4-8` | Model for the vision self-critique step. |
 | `IDEASCOPE_RENDER_TIMEOUT_MS` | `5000` | Per-beat render-check timeout (validation pipeline). |

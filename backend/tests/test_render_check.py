@@ -55,6 +55,41 @@ export default function createScene(ctx) {
 }
 """
 
+GSAP_CANVAS = """
+export default function createScene(ctx) {
+  if (!ctx.gsap || typeof ctx.gsap.to !== "function") {
+    throw new Error("ctx.gsap not available");
+  }
+  const state = { r: 10 };
+  ctx.gsap.to(state, { r: 40, duration: 0.05, ease: "power2.out" });
+  let firstFrame = true;
+  return {
+    draw(p) {
+      p.background(255);
+      p.circle(ctx.width / 2, ctx.height / 2, state.r);
+      if (firstFrame) { firstFrame = false; ctx.ready(); }
+    },
+  };
+}
+"""
+
+GSAP_SVG = """
+export default function createScene(ctx) {
+  if (!ctx.gsap || typeof ctx.gsap.to !== "function") {
+    throw new Error("ctx.gsap not available");
+  }
+  const NS = "http://www.w3.org/2000/svg";
+  const circle = document.createElementNS(NS, "circle");
+  circle.setAttribute("cx", "50");
+  circle.setAttribute("cy", "50");
+  circle.setAttribute("r", "10");
+  ctx.svg.appendChild(circle);
+  ctx.gsap.to({}, { duration: 0.01 }); // exercises a real tween end-to-end
+  ctx.ready();
+  return {};
+}
+"""
+
 
 @pytest.fixture(autouse=True, scope="module")
 def _cleanup_browser() -> Iterator[None]:
@@ -85,6 +120,20 @@ def test_hanging_scene_times_out_as_failure() -> None:
     result = render_check(engine="canvas", code=NEVER_READY, params={}, timeout_ms=500)
     assert result.ok is False
     assert result.error is not None
+
+
+def test_gsap_is_available_in_canvas_scenes() -> None:
+    result = render_check(engine="canvas", code=GSAP_CANVAS, params={})
+    assert result.ok is True
+    assert result.error is None
+    assert result.screenshot is not None
+
+
+def test_gsap_is_available_in_svg_scenes() -> None:
+    result = render_check(engine="svg", code=GSAP_SVG, params={})
+    assert result.ok is True
+    assert result.error is None
+    assert result.screenshot is not None
 
 
 def test_svg_scene_with_manipulable_interaction() -> None:

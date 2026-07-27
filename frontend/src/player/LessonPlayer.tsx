@@ -110,8 +110,8 @@ export function LessonPlayer({ lesson, generationStatus = "complete", onExit }: 
         <span className="hidden text-xs text-gray-400 sm:inline">Use ← → or Space to navigate</span>
         <button
           type="button"
-          onClick={player.next}
-          disabled={!player.canNext}
+          onClick={player.isLast ? onExit : player.next}
+          disabled={player.isLast ? !onExit : !player.canNext}
           className="rounded-md bg-gray-900 px-4 py-2 text-sm font-medium text-white enabled:hover:bg-gray-700 disabled:opacity-40"
         >
           {player.isLast ? "Done" : "Next →"}

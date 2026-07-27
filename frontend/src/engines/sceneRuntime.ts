@@ -13,6 +13,13 @@
  * downloads regardless of whether their lesson ever uses a canvas scene
  * (Phase 9 — deferred from Phase 2). The module-level promise below means the
  * fetch+parse cost is paid at most once per session, on the first canvas beat.
+ *
+ * GSAP (~70 KB minified — see docs/SCENE_CONTRACT.md §2.1) is loaded the same
+ * way, but for *every* scene regardless of engine: it's a tweening/easing
+ * library, not a rendering surface, so it's equally useful animating p5
+ * variables or SVG attributes. Being ~15x smaller than p5, always loading it
+ * (once per session, cached after) is a fine trade for not needing a
+ * code-scanning heuristic to decide whether a given beat "needs" it.
  */
 
 import type { Engine, ParamValue } from "../types/lesson";
@@ -22,6 +29,13 @@ let p5SourcePromise: Promise<string> | null = null;
 function loadP5Source(): Promise<string> {
   p5SourcePromise ??= import("p5/lib/p5.min.js?raw").then((mod) => mod.default);
   return p5SourcePromise;
+}
+
+let gsapSourcePromise: Promise<string> | null = null;
+
+function loadGsapSource(): Promise<string> {
+  gsapSourcePromise ??= import("gsap/dist/gsap.min.js?raw").then((mod) => mod.default);
+  return gsapSourcePromise;
 }
 
 export interface SceneDocumentOptions {
@@ -58,6 +72,7 @@ const ctx = {
   params: params,
   reducedMotion: !!cfg.reducedMotion,
   ready: fireReady,
+  gsap: window.gsap,
 };
 
 window.addEventListener("message", (ev) => {
@@ -133,7 +148,12 @@ export async function buildSceneDocument(opts: SceneDocumentOptions): Promise<st
     reducedMotion: opts.reducedMotion,
   });
   const sceneCodeLiteral = JSON.stringify(opts.code);
-  const p5Tag = opts.engine === "canvas" ? `<script>${await loadP5Source()}</script>` : "";
+  const [p5Source, gsapSource] = await Promise.all([
+    opts.engine === "canvas" ? loadP5Source() : Promise.resolve(null),
+    loadGsapSource(),
+  ]);
+  const p5Tag = p5Source ? `<script>${p5Source}</script>` : "";
+  const gsapTag = `<script>${gsapSource}</script>`;
 
   const csp =
     "default-src 'none'; script-src 'unsafe-inline' blob:; style-src 'unsafe-inline'; img-src data:;";
@@ -145,6 +165,7 @@ export async function buildSceneDocument(opts: SceneDocumentOptions): Promise<st
 <meta http-equiv="Content-Security-Policy" content="${csp}">
 <style>html,body{margin:0;padding:0;height:100%;overflow:hidden;background:#fff}#stage{width:100vw;height:100vh}</style>
 ${p5Tag}
+${gsapTag}
 </head>
 <body>
 <div id="stage"></div>

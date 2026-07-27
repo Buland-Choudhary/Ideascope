@@ -28,11 +28,12 @@ as a small ES module targeting a fixed runtime contract. Follow it exactly:
 all provided through `ctx` — never reach outside it.
 - `ctx` fields: `ctx.engine` ("canvas"|"svg"), `ctx.p5` (canvas engine: an \
 instance-mode p5 object, canvas already created), `ctx.svg` (svg engine: an \
-attached `<svg>` element), `ctx.katex` (svg engine: `renderToString(tex)` for \
-math), `ctx.width`/`ctx.height` (numbers), `ctx.params` (current manipulable \
-values keyed by their `param` name), `ctx.reducedMotion` (boolean — when true, \
-render the settled final state, no continuous motion), `ctx.ready()` (call \
-exactly once, when the first representative frame is drawn).
+attached `<svg>` element), `ctx.gsap` (both engines: the GSAP animation \
+library, for eased tweens and timelines — see below), `ctx.width`/`ctx.height` \
+(numbers), `ctx.params` (current manipulable values keyed by their `param` \
+name), `ctx.reducedMotion` (boolean — when true, render the settled final \
+state, no continuous motion), `ctx.ready()` (call exactly once, when the first \
+representative frame is drawn).
 - The controller object you return may implement: `setup(p)` (canvas, once), \
 `draw(p)` (canvas, every frame — draw here), `render()` (svg, optional), \
 `onParamChange(param, value)` (both — react to a manipulable changing), \
@@ -42,6 +43,15 @@ with a flag) so the screenshot lands on a real frame, not a blank one.
 - SVG scenes: build your DOM, then call `ctx.ready()` once, at the end of setup.
 - Read manipulable values from `ctx.params[paramName]`; update your local state \
 in `onParamChange` — never read DOM input elements directly (there are none).
+- **`ctx.gsap`** (full GSAP 3 API — `gsap.to()`, `.from()`, `.timeline()`, eases \
+like `"power2.out"`, `"elastic.out(1, 0.4)"`, `"back.out"`, etc.) is the \
+preferred way to animate a transition — a manipulable change, a value settling \
+into place, a sequence of steps appearing — instead of hand-rolling easing math. \
+For an SVG scene, tween a plain JS object and write the eased value onto DOM \
+attributes/CSS in `onUpdate` (SVG attributes aren't directly tweenable by name \
+without a plugin). For a canvas scene, tween a plain JS object and read the \
+eased value in `draw`. When `ctx.reducedMotion` is true, skip `ctx.gsap` tweens \
+entirely and set the end value directly — don't animate into the settled state.
 - Keep it visually clear at a glance: generous spacing, a small readable \
 palette, no clutter. Correctness of the depiction matters more than polish.
 
@@ -112,7 +122,21 @@ export default function createScene(ctx) {
     ctx.svg.appendChild(t);
   }
   let stage = Number(ctx.params.stage ?? 0);
-  const highlight = () => circles.forEach((c, i) => c.setAttribute("fill", i === stage ? "#3b82f6" : "#eee"));
+  const scale = circles.map(() => ({ v: 1 }));
+  const setScale = (i, v) => circles[i].setAttribute("r", String(r * v));
+  const highlight = () => {
+    circles.forEach((c, i) => {
+      c.setAttribute("fill", i === stage ? "#3b82f6" : "#eee");
+      const target = i === stage ? 1.25 : 1;
+      if (ctx.reducedMotion) { setScale(i, target); return; }
+      ctx.gsap.to(scale[i], {
+        v: target,
+        duration: 0.35,
+        ease: "back.out(2)",
+        onUpdate: () => setScale(i, scale[i].v),
+      });
+    });
+  };
   highlight();
   ctx.ready();
   return {

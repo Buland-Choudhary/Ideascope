@@ -22,6 +22,7 @@ from pathlib import Path
 
 _VENDOR_DIR = Path(__file__).resolve().parent / "vendor"
 _P5_SOURCE = (_VENDOR_DIR / "p5.min.js").read_text()
+_GSAP_SOURCE = (_VENDOR_DIR / "gsap.min.js").read_text()
 
 READY = "ideascope:ready"
 ERROR = "ideascope:error"
@@ -49,6 +50,7 @@ const ctx = {{
   params: params,
   reducedMotion: !!cfg.reducedMotion,
   ready: fireReady,
+  gsap: window.gsap,
 }};
 
 window.addEventListener("message", (ev) => {{
@@ -122,6 +124,7 @@ def build_scene_srcdoc(
     cfg = json.dumps({"engine": engine, "params": params, "reducedMotion": reduced_motion})
     scene_code_literal = json.dumps(code)
     p5_tag = f"<script>{_P5_SOURCE}</script>" if engine == "canvas" else ""
+    gsap_tag = f"<script>{_GSAP_SOURCE}</script>"
     csp = (
         "default-src 'none'; script-src 'unsafe-inline' blob:; "
         "style-src 'unsafe-inline'; img-src data:;"
@@ -133,6 +136,7 @@ def build_scene_srcdoc(
 <meta http-equiv="Content-Security-Policy" content="{csp}">
 <style>html,body{{margin:0;padding:0;height:100%;overflow:hidden;background:#fff}}#stage{{width:100vw;height:100vh}}</style>
 {p5_tag}
+{gsap_tag}
 </head>
 <body>
 <div id="stage"></div>

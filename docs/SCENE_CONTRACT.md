@@ -44,13 +44,43 @@ export default function createScene(ctx) {
 |---|---|---|
 | `ctx.engine` | `"canvas" \| "svg"` | Which surface is provided. |
 | `ctx.p5` | p5 instance | **canvas engine only.** Instance-mode p5; the canvas is already created at `width × height` and attached. Draw with `ctx.p5.*` (also passed to `setup`/`draw` for convenience). |
-| `ctx.svg` | `SVGSVGElement` | **svg engine only.** An `<svg>` element, sized and attached. Append namespaced children to it. KaTeX is available as `ctx.katex` for math. |
-| `ctx.katex` | KaTeX module | **svg engine only.** `ctx.katex.renderToString(tex)` → HTML string for math labels (wrap in `<foreignObject>`). |
+| `ctx.svg` | `SVGSVGElement` | **svg engine only.** An `<svg>` element, sized and attached. Append namespaced children to it. |
+| `ctx.gsap` | GSAP module | **both engines.** The full GSAP 3 API (`gsap.to()`, `.from()`, `.timeline()`, eases) for tweening a transition instead of hand-rolled easing math — see §2.1. |
 | `ctx.width` | number | Stage width in CSS px. |
 | `ctx.height` | number | Stage height in CSS px. |
 | `ctx.params` | `Record<string, number \| string \| boolean>` | Current manipulable values, keyed by each manipulable's `param`. |
 | `ctx.reducedMotion` | boolean | When true, render the final/settled state without continuous motion (docs/PLAN.md §6.4). |
 | `ctx.ready` | `() => void` | Call **once** when the first representative frame is on screen (see §5). |
+
+### 2.1 `ctx.gsap` — additive, non-breaking (added post-freeze)
+
+Added without a contract version bump: it's a pure addition (a new optional
+`ctx` field), doesn't change any existing field's meaning, and every prior
+scene continues to work untouched. GSAP (~70 KB minified, MIT-equivalent free
+license) is loaded once per session — like p5, via a dynamic `import()` so it
+doesn't inflate the initial bundle (`frontend/src/engines/sceneRuntime.ts`,
+`app/validation/runtime.py`) — and is available in **every** scene regardless
+of engine, since it's a tweening/timeline library, not a rendering surface.
+
+- **SVG**: SVG attributes aren't directly tweenable by name without a plugin,
+  so tween a plain JS object and write the eased value onto the DOM in
+  `onUpdate`: `gsap.to(state, { r: 40, duration: 0.3, onUpdate: () => el.setAttribute("r", state.r) })`.
+- **Canvas**: same pattern — tween a plain JS object, read the eased value in
+  `draw`.
+- **`ctx.reducedMotion`**: skip `ctx.gsap` tweens entirely and set the end
+  value directly; don't animate into the settled state.
+
+**Note on `ctx.katex`:** an earlier draft of this contract and the beat-
+generation prompt documented `ctx.katex` (math rendering) as available. It was
+never actually implemented in either runtime — KaTeX needs its web fonts
+available to render correctly, and the sandboxed iframe's CSP blocks all
+network/font loading, so it would need every font file embedded as a `data:`
+URI, which wasn't done. Any beat that reached for it would have crashed
+(gracefully — the client-side sandboxed-iframe error handling catches it and
+shows a "couldn't render this scene" fallback rather than a blank beat — but
+still a beat that should have worked). Removed from the active prompt
+(`app/generation/beat_prompts.py`) until it's implemented properly; not
+currently part of the contract.
 
 ---
 
