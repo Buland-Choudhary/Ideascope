@@ -1,10 +1,13 @@
-import type { Beat, Duration, Outline } from "../types/lesson";
+import type { Beat, Duration, LessonUsage, ModelOption, Outline } from "../types/lesson";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000";
 
 export interface GenerateLessonRequest {
   topic: string;
   duration?: Duration;
+  /** Optional per-lesson model override (docs/PLAN.md §14) — omit to use the
+   * server's configured defaults. */
+  model?: string;
 }
 
 async function parseErrorDetail(response: Response): Promise<string> {
@@ -28,18 +31,30 @@ export async function createLesson(req: GenerateLessonRequest): Promise<string> 
   const response = await fetch(`${API_BASE_URL}/api/lessons`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ topic: req.topic, duration: req.duration ?? "medium" }),
+    body: JSON.stringify({
+      topic: req.topic,
+      duration: req.duration ?? "medium",
+      model: req.model,
+    }),
   });
   if (!response.ok) throw new Error(await parseErrorDetail(response));
   const body = (await response.json()) as { lessonId: string };
   return body.lessonId;
 }
 
+/** GET /api/models: the models a learner can pick for a lesson, with the
+ * $/MTok pricing used to estimate cost (docs/PLAN.md §14). */
+export async function fetchModels(): Promise<ModelOption[]> {
+  const response = await fetch(`${API_BASE_URL}/api/models`);
+  if (!response.ok) throw new Error(await parseErrorDetail(response));
+  return (await response.json()) as ModelOption[];
+}
+
 export interface LessonStreamHandlers {
   onOutline: (outline: Outline) => void;
   onBeat: (beat: Beat) => void;
   onBeatFailed?: (index: number, error: string) => void;
-  onComplete: () => void;
+  onComplete: (usage: LessonUsage | null) => void;
   onFailed: (error: string) => void;
 }
 
@@ -65,8 +80,11 @@ export function streamLesson(lessonId: string, handlers: LessonStreamHandlers): 
     const data = JSON.parse((e as MessageEvent).data) as { index: number; error: string };
     handlers.onBeatFailed?.(data.index, data.error);
   });
-  source.addEventListener("lesson_complete", () => {
-    handlers.onComplete();
+  source.addEventListener("lesson_complete", (e) => {
+    // `usage` is only present once at least one real Anthropic call has been
+    // made (docs/PLAN.md's cost-transparency note) — absent in mock mode.
+    const data = JSON.parse((e as MessageEvent).data) as { usage?: LessonUsage };
+    handlers.onComplete(data.usage ?? null);
     source.close();
   });
   source.addEventListener("lesson_failed", (e) => {

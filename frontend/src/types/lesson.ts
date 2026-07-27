@@ -103,6 +103,33 @@ export interface Lesson {
 /** Generation lifecycle for a just-in-time lesson (docs/PLAN.md §5.1, Phase 6). */
 export type GenerationStatus = "generating" | "complete" | "failed";
 
+/** A model a learner can pick for a lesson's generation, GET /api/models. */
+export interface ModelOption {
+  id: string;
+  inputPricePerMtok: number;
+  outputPricePerMtok: number;
+}
+
+/** One (pipeline stage, model) bucket of a lesson's token/cost report. */
+export interface UsageBreakdownEntry {
+  stage: string;
+  model: string;
+  calls: number;
+  inputTokens: number;
+  outputTokens: number;
+  costUsd: number;
+}
+
+/** Real token usage and estimated dollar cost for one lesson's generation
+ * (docs/PLAN.md's cost-transparency note) — present once at least one real
+ * Anthropic call has happened; absent in mock mode. */
+export interface LessonUsage {
+  inputTokens: number;
+  outputTokens: number;
+  costUsd: number;
+  breakdown: UsageBreakdownEntry[];
+}
+
 /**
  * What the player needs while a lesson is being generated just-in-time: the
  * outline (and its `targetBeatCount`) plus however many beats have arrived so

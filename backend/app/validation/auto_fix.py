@@ -10,7 +10,7 @@ from typing import Any
 from app.config import Settings
 from app.generation.retry import is_retryable
 from app.generation.schema import BeatCode
-from app.observability import log_generation_event
+from app.observability import UsageRecorder, log_generation_event, record_usage
 
 _MAX_API_ATTEMPTS = 2  # transient-error retries for a single fix call, not fix rounds
 
@@ -40,6 +40,7 @@ def auto_fix_scene(
     error: str,
     lesson_id: str,
     beat_index: int,
+    on_usage: UsageRecorder | None = None,
 ) -> str | None:
     """Return repaired code, or ``None`` if the fix call itself failed."""
     user_message = build_auto_fix_user_message(engine=engine, code=code, error=error)
@@ -70,6 +71,7 @@ def auto_fix_scene(
                 continue
             return None
 
+        record_usage(on_usage, stage="auto_fix", model=settings.auto_fix_model, response=response)
         latency_ms = int((time.monotonic() - started) * 1000)
         parsed = getattr(response, "parsed_output", None)
         usage = getattr(response, "usage", None)

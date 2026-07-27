@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 
 import { SceneRenderer } from "../engines/SceneRenderer";
-import type { GenerationStatus, PlayableLesson } from "../types/lesson";
+import type { GenerationStatus, LessonUsage, PlayableLesson } from "../types/lesson";
 import { ManipulableControls } from "./ManipulableControls";
 import { useNarrationSpeech } from "./useNarrationSpeech";
 import { usePlayerState } from "./usePlayerState";
@@ -16,10 +16,19 @@ interface LessonPlayerProps {
   lesson: PlayableLesson;
   /** Defaults to "complete" — fixture lessons are already fully generated. */
   generationStatus?: GenerationStatus;
+  /** Real token usage/cost for this lesson's generation (docs/PLAN.md's cost-
+   * transparency note) — absent for fixtures and mock-mode lessons, which
+   * never made a real Anthropic call. */
+  usage?: LessonUsage | null;
   onExit?: () => void;
 }
 
-export function LessonPlayer({ lesson, generationStatus = "complete", onExit }: LessonPlayerProps) {
+export function LessonPlayer({
+  lesson,
+  generationStatus = "complete",
+  usage,
+  onExit,
+}: LessonPlayerProps) {
   const player = usePlayerState(lesson);
   const narration = useNarrationSpeech();
 
@@ -58,6 +67,7 @@ export function LessonPlayer({ lesson, generationStatus = "complete", onExit }: 
           </p>
         </div>
         <div className="flex items-center gap-4">
+          {generationStatus === "complete" && usage && <UsageBadge usage={usage} />}
           <button
             type="button"
             onClick={narration.toggle}
@@ -118,6 +128,41 @@ export function LessonPlayer({ lesson, generationStatus = "complete", onExit }: 
         </button>
       </nav>
     </section>
+  );
+}
+
+function formatCost(usd: number): string {
+  // Beat-level costs are typically a fraction of a cent — 2 decimal places
+  // would round most lessons to "$0.00", which reads as "this was free"
+  // rather than "this cost basically nothing." 4 places keeps it honest.
+  return `$${usd.toFixed(4)}`;
+}
+
+/**
+ * Real token usage/cost for this lesson's generation (docs/PLAN.md's cost-
+ * transparency note), shown once generation completes. The title tooltip
+ * breaks it down per pipeline stage/model — plan, beat, and (when the
+ * lightweight code review or full validation pipeline ran) review/critique
+ * calls all cost real tokens, not just the beat calls a learner might assume.
+ */
+function UsageBadge({ usage }: { usage: LessonUsage }) {
+  const totalTokens = usage.inputTokens + usage.outputTokens;
+  const tooltip = usage.breakdown
+    .map(
+      (b) =>
+        `${b.stage} (${b.model}): ${b.calls} call${b.calls === 1 ? "" : "s"}, ` +
+        `${b.inputTokens.toLocaleString()} in / ${b.outputTokens.toLocaleString()} out, ` +
+        formatCost(b.costUsd),
+    )
+    .join("\n");
+
+  return (
+    <span
+      className="rounded-md border border-gray-200 px-3 py-1.5 text-sm text-gray-600"
+      title={tooltip}
+    >
+      💰 {formatCost(usage.costUsd)} · {totalTokens.toLocaleString()} tokens
+    </span>
   );
 }
 

@@ -5,6 +5,8 @@ failures, per-beat failures, and the happy path are all covered without a
 network call.
 """
 
+import threading
+import time
 from types import SimpleNamespace
 
 import pytest
@@ -15,6 +17,7 @@ from app.generation.plan import PlanGenerationError
 from app.generation.schema import BeatCode, BeatPlan, LessonPlan
 from app.models import BeatStatus, Duration, Engine, LessonParams, Primitive
 from app.state.store import LessonStore
+from app.validation.schema import Critique
 
 
 def _plan(n_beats: int) -> LessonPlan:
@@ -117,6 +120,151 @@ def test_real_mode_happy_path(monkeypatch: pytest.MonkeyPatch) -> None:
     for i, beat in enumerate(state.lesson.beats):
         assert beat.index == i
         assert beat.status == BeatStatus.READY
+
+
+def test_run_lesson_generation_records_usage_for_every_real_api_call(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Plan generation, each beat's generation, and (since skip_validation is
+    on) each beat's code review all cost real tokens — state.usage_summary()
+    should reflect every one of them, tagged with the model that actually
+    made the call, not just the beat calls."""
+
+    class _Messages:
+        def parse(self, **kwargs: object) -> object:
+            fmt = kwargs.get("output_format")
+            if fmt is LessonPlan:
+                return SimpleNamespace(
+                    parsed_output=_plan(3),
+                    usage=SimpleNamespace(input_tokens=100, output_tokens=50),
+                )
+            if fmt is BeatCode:
+                return SimpleNamespace(
+                    parsed_output=BeatCode(code=GOOD_CODE),
+                    usage=SimpleNamespace(input_tokens=200, output_tokens=100),
+                )
+            if fmt is Critique:
+                return SimpleNamespace(
+                    parsed_output=Critique(passed=True, feedback="ok"),
+                    usage=SimpleNamespace(input_tokens=30, output_tokens=10),
+                )
+            raise AssertionError(f"unexpected output_format: {fmt!r}")
+
+    fake_client = SimpleNamespace(messages=_Messages())
+    monkeypatch.setattr(orchestrator_module, "Anthropic", lambda api_key: fake_client)
+
+    state = LessonStore().create()
+    settings = Settings(
+        anthropic_api_key="sk-test",
+        mock_generation=False,
+        skip_validation=True,
+        beat_generation_concurrency=1,
+    )
+
+    orchestrator_module.run_lesson_generation(
+        settings, state, topic="t", params=LessonParams(duration=Duration.SHORT)
+    )
+
+    assert state.status == "complete"
+    usage = state.usage_summary()
+    assert usage.input_tokens == 100 + 3 * 200 + 3 * 30
+    assert usage.output_tokens == 50 + 3 * 100 + 3 * 10
+
+    by_stage = {b.stage: b for b in usage.breakdown}
+    assert by_stage["plan"].model == settings.plan_model
+    assert by_stage["plan"].calls == 1
+    assert by_stage["beat"].model == settings.beat_model
+    assert by_stage["beat"].calls == 3
+    assert by_stage["code_review"].model == settings.auto_fix_model
+    assert by_stage["code_review"].calls == 3
+
+
+def _tracking_slow_generate_and_validate(
+    concurrent_calls: dict[str, int], lock: threading.Lock, delay: float
+) -> object:
+    def _generate(client: object, settings: object, **kwargs: object) -> object:
+        from app.models import BeatValidation, Scene
+
+        with lock:
+            concurrent_calls["current"] += 1
+            concurrent_calls["max"] = max(concurrent_calls["max"], concurrent_calls["current"])
+        time.sleep(delay)
+        with lock:
+            concurrent_calls["current"] -= 1
+        return (
+            Scene(code=GOOD_CODE),
+            BeatStatus.READY,
+            BeatValidation(render_ok=True, auto_fix_attempts=0, critique_pass=True),
+        )
+
+    return _generate
+
+
+def test_beats_generate_concurrently_when_validation_is_skipped(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fake_client = FakeClient(_plan(3), GOOD_CODE)
+    monkeypatch.setattr(orchestrator_module, "Anthropic", lambda api_key: fake_client)
+
+    concurrent_calls = {"current": 0, "max": 0}
+    lock = threading.Lock()
+    monkeypatch.setattr(
+        orchestrator_module,
+        "generate_and_validate_beat",
+        _tracking_slow_generate_and_validate(concurrent_calls, lock, delay=0.2),
+    )
+
+    state = LessonStore().create()
+    settings = Settings(
+        anthropic_api_key="sk-test",
+        mock_generation=False,
+        skip_validation=True,
+        beat_generation_concurrency=3,
+    )
+
+    started = time.monotonic()
+    orchestrator_module.run_lesson_generation(
+        settings, state, topic="t", params=LessonParams(duration=Duration.SHORT)
+    )
+    elapsed = time.monotonic() - started
+
+    assert state.status == "complete"
+    assert state.lesson is not None
+    assert concurrent_calls["max"] >= 2, "beats should have overlapped, not run one at a time"
+    assert elapsed < 0.5, f"3 beats at 0.2s should run concurrently in ~0.2-0.3s, took {elapsed}s"
+    # Order-independent: beats can finish in any order, but every index 0..2
+    # is present exactly once (see app/api/lessons.py's index-based lookup).
+    assert sorted(b.index for b in state.lesson.beats) == [0, 1, 2]
+
+
+def test_beats_generate_sequentially_when_validation_is_active(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # skip_validation defaults to False — Playwright's sync API requires
+    # single-thread affinity, so this must NOT parallelize regardless of
+    # beat_generation_concurrency.
+    fake_client = FakeClient(_plan(3), GOOD_CODE)
+    monkeypatch.setattr(orchestrator_module, "Anthropic", lambda api_key: fake_client)
+
+    concurrent_calls = {"current": 0, "max": 0}
+    lock = threading.Lock()
+    monkeypatch.setattr(
+        orchestrator_module,
+        "generate_and_validate_beat",
+        _tracking_slow_generate_and_validate(concurrent_calls, lock, delay=0.05),
+    )
+
+    state = LessonStore().create()
+    settings = Settings(
+        anthropic_api_key="sk-test", mock_generation=False, beat_generation_concurrency=3
+    )
+
+    orchestrator_module.run_lesson_generation(
+        settings, state, topic="t", params=LessonParams(duration=Duration.SHORT)
+    )
+
+    assert state.status == "complete"
+    assert concurrent_calls["max"] == 1
 
 
 def test_plan_failure_fails_the_whole_lesson(monkeypatch: pytest.MonkeyPatch) -> None:

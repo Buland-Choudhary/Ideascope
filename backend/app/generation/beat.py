@@ -22,7 +22,7 @@ from app.config import Settings
 from app.generation.beat_prompts import BEAT_SYSTEM_PROMPT, build_beat_user_message
 from app.generation.retry import is_retryable
 from app.generation.schema import BeatCode, BeatPlan
-from app.observability import log_generation_event
+from app.observability import UsageRecorder, log_generation_event, record_usage
 
 _MAX_ATTEMPTS = 2
 
@@ -61,6 +61,7 @@ def generate_beat_scene(
     lesson_id: str,
     beat_index: int,
     extra_feedback: str | None = None,
+    on_usage: UsageRecorder | None = None,
 ) -> str:
     """Generate and return this beat's scene code (module source).
 
@@ -108,6 +109,7 @@ def generate_beat_scene(
                 continue
             raise BeatGenerationError(f"beat call failed: {exc}") from exc
 
+        record_usage(on_usage, stage="beat", model=settings.beat_model, response=response)
         latency_ms = int((time.monotonic() - started) * 1000)
         parsed = getattr(response, "parsed_output", None)
         usage = getattr(response, "usage", None)

@@ -1,6 +1,6 @@
 import { expect, test } from "vitest";
 
-import type { Beat, Lesson } from "./lesson";
+import type { Beat, Lesson, LessonUsage, ModelOption } from "./lesson";
 
 // Compile-time check that the mirrored types are internally consistent and
 // ergonomic to construct. `tsc` enforces the shape; the runtime asserts keep
@@ -38,4 +38,32 @@ test("a typed lesson literal has the expected shape", () => {
     "stepper",
     "toggle",
   ]);
+});
+
+const sampleModel: ModelOption = {
+  id: "claude-sonnet-5",
+  inputPricePerMtok: 3,
+  outputPricePerMtok: 15,
+};
+
+const sampleUsage: LessonUsage = {
+  inputTokens: 1000,
+  outputTokens: 500,
+  costUsd: 0.0105,
+  breakdown: [
+    {
+      stage: "beat",
+      model: "claude-sonnet-5",
+      calls: 3,
+      inputTokens: 1000,
+      outputTokens: 500,
+      costUsd: 0.0105,
+    },
+  ],
+};
+
+test("a typed model option and usage report have the expected shape", () => {
+  expect(sampleModel.id).toBe("claude-sonnet-5");
+  expect(sampleUsage.breakdown[0].stage).toBe("beat");
+  expect(sampleUsage.breakdown.reduce((sum, b) => sum + b.calls, 0)).toBe(3);
 });

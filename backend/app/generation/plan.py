@@ -15,7 +15,7 @@ from app.generation.prompts import PLAN_SYSTEM_PROMPT, build_plan_user_message
 from app.generation.retry import is_retryable
 from app.generation.schema import LessonPlan
 from app.models import BEAT_BANDS, LessonParams
-from app.observability import log_generation_event
+from app.observability import UsageRecorder, log_generation_event, record_usage
 
 _MAX_ATTEMPTS = 2
 
@@ -35,6 +35,7 @@ def generate_plan(
     *,
     topic: str,
     params: LessonParams,
+    on_usage: UsageRecorder | None = None,
 ) -> LessonPlan:
     """Generate and return a validated ``LessonPlan``.
 
@@ -73,6 +74,7 @@ def generate_plan(
                 continue
             raise PlanGenerationError(f"plan call failed: {exc}") from exc
 
+        record_usage(on_usage, stage="plan", model=settings.plan_model, response=response)
         latency_ms = int((time.monotonic() - started) * 1000)
         plan = _extract_plan(response)
         usage = getattr(response, "usage", None)

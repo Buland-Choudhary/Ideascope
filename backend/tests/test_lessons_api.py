@@ -11,13 +11,20 @@ docs/PLAN.md §11).
 """
 
 import json
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
 
+from app.api.lessons import get_lesson_beat
 from app.config import get_settings
+from app.generation import orchestrator as orchestrator_module
+from app.generation.schema import BeatCode, BeatPlan, LessonPlan
 from app.main import app
+from app.models import Beat, Engine, Lesson, LessonParams, Narration, Outline, Primitive, Scene
+from app.state import get_lesson_store
+from app.validation.schema import Critique
 
 client = TestClient(app)
 
@@ -86,6 +93,41 @@ def test_get_single_beat_after_generation(monkeypatch: pytest.MonkeyPatch) -> No
 
     missing = client.get(f"/api/lessons/{lesson_id}/beats/999")
     assert missing.status_code == 404
+
+
+def _make_beat(index: int) -> Beat:
+    return Beat(
+        id=f"beat-{index}",
+        index=index,
+        intent="intent",
+        primitive=Primitive.PLOT,
+        engine=Engine.CANVAS,
+        narration=Narration(text="n"),
+        scene=Scene(code="export default (ctx) => { ctx.ready(); return {}; };"),
+    )
+
+
+def test_get_single_beat_looks_up_by_index_field_not_list_position() -> None:
+    # Beats can complete out of order once generation runs several at a time
+    # (docs/PLAN.md §5.2) — the endpoint must find a beat by its own `index`
+    # field, not assume `state.lesson.beats[index]` still lines up.
+    state = get_lesson_store().create()
+    state.set_lesson(
+        Lesson(
+            id=state.lesson_id,
+            topic="t",
+            params=LessonParams(),
+            outline=Outline(title="T", summary="S", target_beat_count=2),
+            beats=[],
+        )
+    )
+    beat0, beat1 = _make_beat(0), _make_beat(1)
+    # Add out of order: index 1 arrives before index 0.
+    state.add_beat(beat1)
+    state.add_beat(beat0)
+
+    assert get_lesson_beat(state.lesson_id, 0).id == beat0.id
+    assert get_lesson_beat(state.lesson_id, 1).id == beat1.id
 
 
 def test_unknown_lesson_id_returns_404() -> None:
@@ -167,3 +209,94 @@ def test_real_mode_without_key_returns_503(monkeypatch: pytest.MonkeyPatch) -> N
     resp = client.post("/api/lessons", json={"topic": "entropy"})
     assert resp.status_code == 503
     assert "API key" in resp.json()["detail"]
+
+
+def test_create_lesson_rejects_unsupported_model() -> None:
+    resp = client.post("/api/lessons", json={"topic": "entropy", "model": "gpt-4"})
+    assert resp.status_code == 422
+
+
+def test_list_models_returns_the_curated_pricing_table() -> None:
+    resp = client.get("/api/models")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert {m["id"] for m in body} == {"claude-opus-4-8", "claude-sonnet-5", "claude-haiku-4-5"}
+    for m in body:
+        assert m["inputPricePerMtok"] > 0
+        assert m["outputPricePerMtok"] > 0
+
+
+def test_create_lesson_with_model_override_is_used_for_plan_and_beat_calls(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The server's configured defaults are plan_model=opus, beat_model=sonnet
+    (app/config.py) — overriding with claude-haiku-4-5 (none of those
+    defaults) proves the override actually reaches both calls, not just gets
+    accepted and ignored."""
+    calls: list[tuple[str, str]] = []
+
+    class _Messages:
+        def parse(self, **kwargs: object) -> object:
+            fmt = kwargs.get("output_format")
+            model = kwargs["model"]
+            assert isinstance(model, str)
+            if fmt is LessonPlan:
+                calls.append(("plan", model))
+                plan = LessonPlan(
+                    title="T",
+                    summary="S",
+                    beats=[
+                        BeatPlan(
+                            intent=f"i{i}",
+                            narration=f"n{i}",
+                            primitive=Primitive.PLOT,
+                            engine=Engine.CANVAS,
+                        )
+                        for i in range(3)
+                    ],
+                )
+                return SimpleNamespace(
+                    parsed_output=plan, usage=SimpleNamespace(input_tokens=10, output_tokens=5)
+                )
+            if fmt is BeatCode:
+                calls.append(("beat", model))
+                code = "export default (ctx) => { ctx.ready(); return {}; };"
+                return SimpleNamespace(
+                    parsed_output=BeatCode(code=code),
+                    usage=SimpleNamespace(input_tokens=20, output_tokens=10),
+                )
+            if fmt is Critique:
+                calls.append(("review", model))
+                return SimpleNamespace(
+                    parsed_output=Critique(passed=True, feedback="ok"),
+                    usage=SimpleNamespace(input_tokens=5, output_tokens=2),
+                )
+            raise AssertionError(f"unexpected output_format: {fmt!r}")
+
+    fake_client = SimpleNamespace(messages=_Messages())
+    monkeypatch.setattr(orchestrator_module, "Anthropic", lambda api_key: fake_client)
+    monkeypatch.setenv("IDEASCOPE_ANTHROPIC_API_KEY", "sk-test")
+    monkeypatch.setenv("IDEASCOPE_MOCK_GENERATION", "false")
+    monkeypatch.setenv("IDEASCOPE_SKIP_VALIDATION", "true")
+    get_settings.cache_clear()
+
+    create = client.post(
+        "/api/lessons",
+        json={"topic": "how something works", "duration": "short", "model": "claude-haiku-4-5"},
+    )
+    assert create.status_code == 202
+    lesson_id = create.json()["lessonId"]
+    client.get(f"/api/lessons/{lesson_id}/stream")  # drain — completes generation
+
+    plan_models = {m for stage, m in calls if stage == "plan"}
+    beat_models = {m for stage, m in calls if stage == "beat"}
+    assert plan_models == {"claude-haiku-4-5"}
+    assert beat_models == {"claude-haiku-4-5"}
+
+    state = client.get(f"/api/lessons/{lesson_id}").json()
+    assert state["status"] == "complete"
+    assert state["usage"] is not None
+    assert state["usage"]["inputTokens"] == 10 + 3 * 20 + 3 * 5
+    assert state["usage"]["outputTokens"] == 5 + 3 * 10 + 3 * 2
+    breakdown_models = {b["model"] for b in state["usage"]["breakdown"]}
+    assert breakdown_models == {"claude-haiku-4-5"}

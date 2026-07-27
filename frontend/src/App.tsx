@@ -1,9 +1,25 @@
 import { useEffect, useRef, useState } from "react";
 
-import { createLesson, streamLesson } from "./api/lessons";
+import { createLesson, fetchModels, streamLesson } from "./api/lessons";
 import { FIXTURES } from "./fixtures";
 import { LessonPlayer } from "./player/LessonPlayer";
-import type { Duration, GenerationStatus, Lesson, PlayableLesson } from "./types/lesson";
+import type {
+  Duration,
+  GenerationStatus,
+  Lesson,
+  LessonUsage,
+  ModelOption,
+  PlayableLesson,
+} from "./types/lesson";
+
+// Friendlier labels for the model picker than the bare API id — falls back
+// to the id itself for any model GET /api/models returns that isn't listed
+// here, so a server-side addition never breaks the picker.
+const MODEL_LABELS: Record<string, string> = {
+  "claude-opus-4-8": "Opus — highest quality, priciest",
+  "claude-sonnet-5": "Sonnet 5 — balanced (default)",
+  "claude-haiku-4-5": "Haiku — fastest, cheapest",
+};
 
 /**
  * Just-in-time generation shell (docs/PLAN.md §5.1, Phase 6): the topic form
@@ -32,7 +48,12 @@ export function App() {
   if (lessonId) {
     if (live.lesson) {
       return (
-        <LessonPlayer lesson={live.lesson} generationStatus={live.status} onExit={reset} />
+        <LessonPlayer
+          lesson={live.lesson}
+          generationStatus={live.status}
+          usage={live.usage}
+          onExit={reset}
+        />
       );
     }
     if (live.status === "failed") {
@@ -48,6 +69,7 @@ interface LiveLessonState {
   lesson: PlayableLesson | null;
   status: GenerationStatus;
   error: string | null;
+  usage: LessonUsage | null;
 }
 
 /** Subscribes to the SSE stream for `lessonId`, building up a PlayableLesson. */
@@ -56,11 +78,12 @@ function useLiveLesson(lessonId: string | null): LiveLessonState {
     lesson: null,
     status: "generating",
     error: null,
+    usage: null,
   });
 
   useEffect(() => {
     if (!lessonId) return;
-    setState({ lesson: null, status: "generating", error: null });
+    setState({ lesson: null, status: "generating", error: null, usage: null });
 
     return streamLesson(lessonId, {
       onOutline: (outline) => {
@@ -77,7 +100,7 @@ function useLiveLesson(lessonId: string | null): LiveLessonState {
           return { ...prev, lesson: { ...prev.lesson, beats } };
         });
       },
-      onComplete: () => setState((prev) => ({ ...prev, status: "complete" })),
+      onComplete: (usage) => setState((prev) => ({ ...prev, status: "complete", usage })),
       onFailed: (error) => setState((prev) => ({ ...prev, status: "failed", error })),
     });
   }, [lessonId]);
@@ -121,6 +144,9 @@ function Landing({
 }) {
   const [topic, setTopic] = useState("");
   const [duration, setDuration] = useState<Duration>("medium");
+  // "" means "let the server use its configured default" — no override sent.
+  const [model, setModel] = useState<string>("");
+  const [models, setModels] = useState<ModelOption[]>([]);
   const [status, setStatus] = useState<"idle" | "generating" | "error">("idle");
   const [error, setError] = useState<string | null>(null);
   // A ref guard, not just the disabled attribute: several submit events fired
@@ -129,6 +155,14 @@ function Landing({
   // the button disabled, since that round-trips through a state update.
   const submittingRef = useRef(false);
 
+  useEffect(() => {
+    // Best-effort: if this fails (e.g. offline, backend down), the picker
+    // just stays empty and generation still works with the server default.
+    fetchModels()
+      .then(setModels)
+      .catch(() => {});
+  }, []);
+
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!topic.trim() || submittingRef.current) return;
@@ -136,7 +170,11 @@ function Landing({
     setStatus("generating");
     setError(null);
     try {
-      const lessonId = await createLesson({ topic: topic.trim(), duration });
+      const lessonId = await createLesson({
+        topic: topic.trim(),
+        duration,
+        model: model || undefined,
+      });
       onLessonId(lessonId);
     } catch (err) {
       setStatus("error");
@@ -180,6 +218,22 @@ function Landing({
               <option value="medium">Medium</option>
               <option value="long">Long</option>
             </select>
+            {models.length > 0 && (
+              <select
+                aria-label="Model"
+                value={model}
+                onChange={(e) => setModel(e.target.value)}
+                disabled={status === "generating"}
+                className="rounded-lg border border-gray-300 px-2 py-2 text-sm"
+              >
+                <option value="">Auto (server default)</option>
+                {models.map((m) => (
+                  <option key={m.id} value={m.id}>
+                    {MODEL_LABELS[m.id] ?? m.id}
+                  </option>
+                ))}
+              </select>
+            )}
             <button
               type="submit"
               disabled={status === "generating" || !topic.trim()}

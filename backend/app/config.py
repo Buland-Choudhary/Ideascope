@@ -9,6 +9,13 @@ from functools import lru_cache
 from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+# Models a learner can pick for a lesson's plan+beat generation (docs/PLAN.md
+# §14 cost-experimentation note) — deliberately just the three models the app
+# already prices and uses elsewhere (app/observability/pricing.py), not an
+# arbitrary passthrough string, so a request can't name an unpriced or
+# unvetted model.
+ALLOWED_GENERATION_MODELS: list[str] = ["claude-opus-4-8", "claude-sonnet-5", "claude-haiku-4-5"]
+
 
 class Settings(BaseSettings):
     # populate_by_name lets tests construct Settings(anthropic_api_key=...) by
@@ -40,6 +47,16 @@ class Settings(BaseSettings):
     # Validation pipeline (docs/PLAN.md §5.2, §5.4).
     render_timeout_ms: int = 5000
     max_concurrent_renders: int = 3
+
+    # How many beats generate concurrently (app/generation/orchestrator.py).
+    # Beats used to generate strictly one-at-a-time — each a ~15-25s Anthropic
+    # call — so a lesson's Nth beat didn't even *start* until the (N-1)th
+    # finished. Running several at once cuts wall-clock lesson time by
+    # roughly this factor with zero cost change (same calls, same tokens) —
+    # purely a latency win. Bounded to avoid hammering Anthropic's per-account
+    # rate limits; the SDK's own retry/backoff (app/generation/retry.py)
+    # absorbs transient 429s regardless.
+    beat_generation_concurrency: int = 3
 
     # When true, the generation pipeline serves fixture lessons instead of
     # calling Anthropic (docs/PLAN.md §1 "Mock generation mode"). Wired up in

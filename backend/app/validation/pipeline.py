@@ -11,7 +11,7 @@ from app.config import Settings
 from app.generation.beat import generate_beat_scene
 from app.generation.schema import BeatPlan
 from app.models import BeatStatus
-from app.observability import log_generation_event
+from app.observability import UsageRecorder, log_generation_event
 from app.validation.auto_fix import auto_fix_scene
 from app.validation.critique import critique_screenshot
 from app.validation.fallback import build_fallback_scene
@@ -44,6 +44,7 @@ def _render_with_auto_fix(
     manipulables: list[Any],
     lesson_id: str,
     beat_index: int,
+    on_usage: UsageRecorder | None,
 ) -> tuple[RenderCheckResult, str, int]:
     """Render-check ``code``, repairing via auto-fix up to the attempt budget.
 
@@ -74,6 +75,7 @@ def _render_with_auto_fix(
             error=result.error or "unknown render error",
             lesson_id=lesson_id,
             beat_index=beat_index,
+            on_usage=on_usage,
         )
         fix_attempts += 1
         if fixed is None:
@@ -91,6 +93,7 @@ def validate_beat(
     code: str,
     lesson_id: str,
     beat_index: int,
+    on_usage: UsageRecorder | None = None,
 ) -> ValidatedBeat:
     """Run the full validation pipeline and return a beat that's safe to ship.
 
@@ -113,6 +116,7 @@ def validate_beat(
             manipulables=beat_plan.manipulables,
             lesson_id=lesson_id,
             beat_index=beat_index,
+            on_usage=on_usage,
         )
         total_auto_fix_attempts += fix_attempts
 
@@ -130,6 +134,7 @@ def validate_beat(
                             f"A previous attempt at this beat failed to render: "
                             f"{render_result.error}. Avoid that mistake."
                         ),
+                        on_usage=on_usage,
                     )
                     or current_code
                 )
@@ -148,6 +153,7 @@ def validate_beat(
             interaction_screenshot=render_result.interaction_screenshot,
             interaction_param=render_result.interaction_param,
             interaction_value=render_result.interaction_value,
+            on_usage=on_usage,
         )
         if critique is None:
             # The critique call itself failed (infra, not quality) — the scene
@@ -186,6 +192,7 @@ def validate_beat(
                         f"A previous attempt at this beat did not pass visual review: "
                         f"{critique.feedback}. Address this."
                     ),
+                    on_usage=on_usage,
                 )
                 or current_code
             )

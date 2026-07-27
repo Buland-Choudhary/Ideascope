@@ -72,11 +72,93 @@ test("generating a lesson streams the outline then each beat as it arrives", asy
   expect(source.closed).toBe(true);
 });
 
+test("model picker appears once fetched, and the chosen model is sent to POST /api/lessons", async () => {
+  const user = userEvent.setup();
+  const models = [
+    { id: "claude-opus-4-8", inputPricePerMtok: 5, outputPricePerMtok: 25 },
+    { id: "claude-haiku-4-5", inputPricePerMtok: 1, outputPricePerMtok: 5 },
+  ];
+  const fetchMock = vi.fn<(url: string, init?: RequestInit) => Promise<Response>>(async (url) => {
+    if (url.includes("/api/models")) return new Response(JSON.stringify(models), { status: 200 });
+    return new Response(JSON.stringify({ lessonId: "lesson-abc" }), { status: 202 });
+  });
+  vi.stubGlobal("fetch", fetchMock);
+
+  render(<App />);
+  await waitFor(() => expect(screen.getByLabelText("Model")).toBeInTheDocument());
+
+  await user.type(screen.getByLabelText(/What do you want to understand/), "anything");
+  await user.selectOptions(screen.getByLabelText("Model"), "claude-haiku-4-5");
+  await user.click(screen.getByRole("button", { name: /Generate/ }));
+
+  await waitFor(() => expect(screen.getByText(/Planning your lesson/)).toBeInTheDocument());
+  const postCall = fetchMock.mock.calls.find(([url]) => url.includes("/api/lessons"));
+  expect(postCall).toBeDefined();
+  const [, init] = postCall!;
+  const body = JSON.parse(init!.body as string);
+  expect(body.model).toBe("claude-haiku-4-5");
+});
+
+test("omitting a model choice sends no override (server uses its default)", async () => {
+  const user = userEvent.setup();
+  const fetchMock = vi.fn<(url: string, init?: RequestInit) => Promise<Response>>(async (url) => {
+    if (url.includes("/api/models")) return new Response(JSON.stringify([]), { status: 200 });
+    return new Response(JSON.stringify({ lessonId: "lesson-abc" }), { status: 202 });
+  });
+  vi.stubGlobal("fetch", fetchMock);
+
+  render(<App />);
+  await user.type(screen.getByLabelText(/What do you want to understand/), "anything");
+  await user.click(screen.getByRole("button", { name: /Generate/ }));
+
+  await waitFor(() => expect(screen.getByText(/Planning your lesson/)).toBeInTheDocument());
+  const postCall = fetchMock.mock.calls.find(([url]) => url.includes("/api/lessons"));
+  const [, init] = postCall!;
+  const body = JSON.parse(init!.body as string);
+  expect(body.model).toBeUndefined();
+});
+
+test("shows the token/cost badge once lesson_complete carries a usage report", async () => {
+  const user = userEvent.setup();
+  const lesson = FIXTURES[0];
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async () => new Response(JSON.stringify({ lessonId: "lesson-abc" }), { status: 202 })),
+  );
+
+  render(<App />);
+  await user.type(screen.getByLabelText(/What do you want to understand/), "anything");
+  await user.click(screen.getByRole("button", { name: /Generate/ }));
+  await waitFor(() => expect(screen.getByText(/Planning your lesson/)).toBeInTheDocument());
+
+  const source = FakeEventSource.latest();
+  act(() => source.emit("outline_ready", { outline: lesson.outline }));
+  for (let i = 0; i < lesson.beats.length; i++) {
+    act(() => source.emit("beat_ready", { index: i, beat: lesson.beats[i] }));
+  }
+  await waitFor(() =>
+    expect(screen.getByText(lesson.beats[0].narration.text)).toBeInTheDocument(),
+  );
+
+  act(() =>
+    source.emit("lesson_complete", {
+      lessonId: "lesson-abc",
+      usage: { inputTokens: 500, outputTokens: 300, costUsd: 0.0089, breakdown: [] },
+    }),
+  );
+
+  await waitFor(() => expect(screen.getByText(/\$0\.0089/)).toBeInTheDocument());
+});
+
 test("rapid-fire clicks on Generate only submit once", async () => {
   const user = userEvent.setup();
-  const fetchMock = vi.fn(
-    async () => new Response(JSON.stringify({ lessonId: "lesson-abc" }), { status: 202 }),
-  );
+  // The Landing form also fetches GET /api/models on mount (for the model
+  // picker) — a URL-aware mock keeps that call out of the count this test
+  // actually cares about: how many times POST /api/lessons fired.
+  const fetchMock = vi.fn(async (url: string) => {
+    if (url.includes("/api/models")) return new Response(JSON.stringify([]), { status: 200 });
+    return new Response(JSON.stringify({ lessonId: "lesson-abc" }), { status: 202 });
+  });
   vi.stubGlobal("fetch", fetchMock);
 
   render(<App />);
@@ -92,7 +174,8 @@ test("rapid-fire clicks on Generate only submit once", async () => {
   });
 
   await waitFor(() => expect(screen.getByText(/Planning your lesson/)).toBeInTheDocument());
-  expect(fetchMock).toHaveBeenCalledTimes(1);
+  const postCalls = fetchMock.mock.calls.filter(([url]) => url.includes("/api/lessons"));
+  expect(postCalls).toHaveLength(1);
 });
 
 test("shows an error when lesson creation is rejected", async () => {

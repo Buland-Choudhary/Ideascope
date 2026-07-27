@@ -14,7 +14,7 @@ from typing import Any
 
 from app.config import Settings
 from app.generation.retry import is_retryable
-from app.observability import log_generation_event
+from app.observability import UsageRecorder, log_generation_event, record_usage
 from app.validation.schema import Critique
 
 _MAX_API_ATTEMPTS = 2
@@ -86,6 +86,7 @@ def critique_screenshot(
     interaction_screenshot: bytes | None = None,
     interaction_param: str | None = None,
     interaction_value: object = None,
+    on_usage: UsageRecorder | None = None,
 ) -> Critique | None:
     """Return a ``Critique``, or ``None`` if the critique call itself failed.
 
@@ -136,6 +137,7 @@ def critique_screenshot(
                 continue
             return None
 
+        record_usage(on_usage, stage="critique", model=settings.critique_model, response=response)
         latency_ms = int((time.monotonic() - started) * 1000)
         parsed = getattr(response, "parsed_output", None)
         usage = getattr(response, "usage", None)

@@ -30,9 +30,15 @@ from app.models import (
     Outline,
     Scene,
 )
-from app.observability import log_generation_event
+from app.observability import UsageRecorder, log_generation_event
+from app.validation.code_review import review_beat_code
 from app.validation.fallback import build_fallback_scene
 from app.validation.pipeline import validate_beat
+
+# Rounds for the skip_validation code-review loop below: initial review + one
+# feedback-guided regeneration retry, mirroring the shape of the full
+# pipeline's critique loop (app/validation/pipeline.py) but text-only.
+_MAX_CODE_REVIEW_ROUNDS = 2
 
 
 class GenerationUnavailableError(RuntimeError):
@@ -65,7 +71,13 @@ def _lesson_from_plan(topic: str, params: LessonParams, plan: LessonPlan) -> Les
 
 
 def generate_and_validate_beat(
-    client: Any, settings: Settings, *, beat_plan: BeatPlan, lesson_id: str, beat_index: int
+    client: Any,
+    settings: Settings,
+    *,
+    beat_plan: BeatPlan,
+    lesson_id: str,
+    beat_index: int,
+    on_usage: UsageRecorder | None = None,
 ) -> tuple[Scene, BeatStatus, BeatValidation]:
     """Generate one beat's scene code and run it through the validation
     pipeline, returning the fields a ``Beat`` needs.
@@ -80,7 +92,12 @@ def generate_and_validate_beat(
     """
     try:
         code = generate_beat_scene(
-            client, settings, beat=beat_plan, lesson_id=lesson_id, beat_index=beat_index
+            client,
+            settings,
+            beat=beat_plan,
+            lesson_id=lesson_id,
+            beat_index=beat_index,
+            on_usage=on_usage,
         )
     except BeatGenerationError as exc:
         log_generation_event(
@@ -95,12 +112,51 @@ def generate_and_validate_beat(
         )
 
     if settings.skip_validation:
-        # Deliberate cost/ops trade-off (docs/PLAN.md Phase 10 note): ship the
-        # generated code straight through, with no render-check/auto-fix/
-        # critique. render_ok=True here means "not checked", not "confirmed" —
-        # the client-side sandboxed iframe still catches genuine render
-        # errors at runtime (engines/SceneRenderer.tsx), just without server-
-        # side auto-fix or a pedagogy gate.
+        # Deliberate cost/ops trade-off (docs/PLAN.md Phase 10 note): skip the
+        # Playwright render-check/auto-fix/vision-critique pipeline entirely
+        # (no Chromium in production). In its place, a cheap text-only code
+        # review (app/validation/code_review.py) reads the generated source
+        # and flags obviously wrong or broken beats — one feedback-guided
+        # regeneration retry, same shape as the full pipeline's critique loop,
+        # just without ever rendering anything. render_ok=True still means
+        # "not render-checked", not "confirmed" — the client-side sandboxed
+        # iframe remains the last line of defense against a genuine render
+        # error at runtime (engines/SceneRenderer.tsx).
+        review = None
+        for round_ in range(_MAX_CODE_REVIEW_ROUNDS):
+            review = review_beat_code(
+                client,
+                settings,
+                beat_plan=beat_plan,
+                code=code,
+                lesson_id=lesson_id,
+                beat_index=beat_index,
+                on_usage=on_usage,
+            )
+            if review is None or review.passed:
+                break
+            if round_ < _MAX_CODE_REVIEW_ROUNDS - 1:
+                try:
+                    code = generate_beat_scene(
+                        client,
+                        settings,
+                        beat=beat_plan,
+                        lesson_id=lesson_id,
+                        beat_index=beat_index,
+                        extra_feedback=(
+                            f"A previous attempt at this beat failed code review: "
+                            f"{review.feedback}. Address this in your rewrite."
+                        ),
+                        on_usage=on_usage,
+                    )
+                except BeatGenerationError:
+                    # The regeneration attempt itself exhausted its retry
+                    # budget — ship the original (review-flagged but at least
+                    # present) code rather than letting this beat blow up the
+                    # whole lesson; the review's feedback still surfaces via
+                    # critique_feedback below.
+                    break
+
         log_generation_event(
             "beat", "skipped_validation", lesson_id=lesson_id, beat_index=beat_index
         )
@@ -108,7 +164,10 @@ def generate_and_validate_beat(
             Scene(code=code),
             BeatStatus.READY,
             BeatValidation(
-                render_ok=True, auto_fix_attempts=0, critique_pass=None, critique_feedback=None
+                render_ok=True,
+                auto_fix_attempts=0,
+                critique_pass=review.passed if review is not None else None,
+                critique_feedback=review.feedback if review is not None else None,
             ),
         )
 
@@ -119,6 +178,7 @@ def generate_and_validate_beat(
         code=code,
         lesson_id=lesson_id,
         beat_index=beat_index,
+        on_usage=on_usage,
     )
     return (
         Scene(code=validated.code),

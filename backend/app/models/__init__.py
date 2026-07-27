@@ -15,6 +15,7 @@ from app.models.lesson import (
     Engine,
     Lesson,
     LessonParams,
+    LessonUsage,
     Manipulable,
     ManipulableType,
     Narration,
@@ -22,6 +23,7 @@ from app.models.lesson import (
     Primitive,
     Scene,
     Tone,
+    UsageBreakdownEntry,
 )
 
 __all__ = [
@@ -35,6 +37,7 @@ __all__ = [
     "Engine",
     "Lesson",
     "LessonParams",
+    "LessonUsage",
     "Manipulable",
     "ManipulableType",
     "Narration",
@@ -42,4 +45,5 @@ __all__ = [
     "Primitive",
     "Scene",
     "Tone",
+    "UsageBreakdownEntry",
 ]

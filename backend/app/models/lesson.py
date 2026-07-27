@@ -183,8 +183,49 @@ class Lesson(CamelModel):
 
     @model_validator(mode="after")
     def check_beat_indices(self) -> Self:
-        expected = list(range(len(self.beats)))
-        actual = [b.index for b in self.beats]
-        if actual != expected:
-            raise ValueError(f"beat indices must be contiguous from 0; got {actual}")
+        # Uniqueness + in-range is deliberately checked instead of "list is
+        # exactly 0..N-1 in order": concurrent generation (docs/PLAN.md §5.2)
+        # can produce a partial, out-of-order snapshot while a lesson is still
+        # generating — e.g. just beat 2, sitting alone while 0 and 1 are still
+        # in flight — and that's a valid state to fetch (GET .../lessons/{id}
+        # is explicitly for "SSE-reconnect and debugging" mid-generation), not
+        # a bug. Once every beat has arrived (len == target_beat_count), these
+        # two conditions force the indices to be exactly {0, ..., N-1} by the
+        # pigeonhole principle, so a separate "complete lesson" contiguity
+        # check would be redundant.
+        indices = [b.index for b in self.beats]
+        if len(indices) != len(set(indices)):
+            raise ValueError(f"beat indices must be unique; got {indices}")
+        if any(i >= self.outline.target_beat_count for i in indices):
+            raise ValueError(
+                f"beat indices must be contiguous from 0, within the lesson's "
+                f"{self.outline.target_beat_count}-beat target; got {indices}"
+            )
         return self
+
+
+class UsageBreakdownEntry(CamelModel):
+    """One (pipeline stage, model) bucket of the cost report below — e.g. "3
+    beat calls on claude-sonnet-5 cost $0.02"."""
+
+    stage: str
+    model: str
+    calls: int
+    input_tokens: int
+    output_tokens: int
+    cost_usd: float
+
+
+class LessonUsage(CamelModel):
+    """Real token usage and estimated dollar cost for one lesson's generation
+    (docs/PLAN.md's cost-transparency note) — every actual Anthropic API call
+    made while generating it, across the plan, beat, and (when applicable)
+    code-review/auto-fix/critique stages. An estimate: pricing is a
+    hand-maintained table (``app/observability/pricing.py``), not a live
+    invoice lookup.
+    """
+
+    input_tokens: int
+    output_tokens: int
+    cost_usd: float
+    breakdown: list[UsageBreakdownEntry] = Field(default_factory=list)

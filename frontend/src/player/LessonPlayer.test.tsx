@@ -4,7 +4,7 @@ import { beforeEach, expect, test, vi } from "vitest";
 
 import { getFixture } from "../fixtures";
 import { FakeSpeechSynthesis, installFakeSpeechSynthesis } from "../test-support/fakeSpeechSynthesis";
-import type { Lesson } from "../types/lesson";
+import type { Lesson, LessonUsage } from "../types/lesson";
 import { LessonPlayer } from "./LessonPlayer";
 
 const lesson = getFixture("fixture-sine-wave") as Lesson;
@@ -91,4 +91,44 @@ test("Done is disabled on the last beat when there's no exit handler", async () 
   }
 
   expect(screen.getByRole("button", { name: "Done" })).toBeDisabled();
+});
+
+const sampleUsage: LessonUsage = {
+  inputTokens: 1200,
+  outputTokens: 800,
+  costUsd: 0.0231,
+  breakdown: [
+    {
+      stage: "plan",
+      model: "claude-opus-4-8",
+      calls: 1,
+      inputTokens: 200,
+      outputTokens: 100,
+      costUsd: 0.0035,
+    },
+    {
+      stage: "beat",
+      model: "claude-sonnet-5",
+      calls: 3,
+      inputTokens: 1000,
+      outputTokens: 700,
+      costUsd: 0.0196,
+    },
+  ],
+};
+
+test("shows the token/cost badge once generation completes with usage", () => {
+  render(<LessonPlayer lesson={lesson} generationStatus="complete" usage={sampleUsage} />);
+  expect(screen.getByText(/\$0\.0231/)).toBeInTheDocument();
+  expect(screen.getByText(/2,000 tokens/)).toBeInTheDocument();
+});
+
+test("hides the cost badge while still generating, even if usage has arrived", () => {
+  render(<LessonPlayer lesson={lesson} generationStatus="generating" usage={sampleUsage} />);
+  expect(screen.queryByText(/\$0\.0231/)).not.toBeInTheDocument();
+});
+
+test("hides the cost badge when there's no usage (mock mode / fixtures)", () => {
+  render(<LessonPlayer lesson={lesson} generationStatus="complete" usage={null} />);
+  expect(screen.queryByText(/tokens/)).not.toBeInTheDocument();
 });
