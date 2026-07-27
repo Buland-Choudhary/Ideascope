@@ -22,7 +22,12 @@ services:
     name: ideascope-backend
     runtime: docker
     plan: free
-    rootDir: backend
+    # No rootDir here deliberately: Render's docs claim dockerfilePath/
+    # dockerContext are always relative to the repo root regardless of
+    # rootDir, but the actual behavior observed was rootDir + dockerContext
+    # getting concatenated ("backend/backend" — no such path). Omitting
+    # rootDir avoids that; the only cost is losing the "skip rebuild on
+    # frontend-only changes" optimization, not a correctness issue.
     dockerfilePath: backend/Dockerfile
     dockerContext: backend
     healthCheckPath: /api/health
