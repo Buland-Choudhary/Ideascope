@@ -22,7 +22,7 @@
  * code-scanning heuristic to decide whether a given beat "needs" it.
  */
 
-import type { Engine, ParamValue } from "../types/lesson";
+import type { Engine, Palette, ParamValue } from "../types/lesson";
 
 let p5SourcePromise: Promise<string> | null = null;
 
@@ -43,6 +43,7 @@ export interface SceneDocumentOptions {
   code: string;
   params: Record<string, ParamValue>;
   reducedMotion: boolean;
+  palette: Palette;
 }
 
 /** Message types on the host↔iframe bridge. */
@@ -73,6 +74,7 @@ const ctx = {
   reducedMotion: !!cfg.reducedMotion,
   ready: fireReady,
   gsap: window.gsap,
+  palette: cfg.palette,
 };
 
 window.addEventListener("message", (ev) => {
@@ -146,6 +148,7 @@ export async function buildSceneDocument(opts: SceneDocumentOptions): Promise<st
     engine: opts.engine,
     params: opts.params,
     reducedMotion: opts.reducedMotion,
+    palette: opts.palette,
   });
   const sceneCodeLiteral = JSON.stringify(opts.code);
   const [p5Source, gsapSource] = await Promise.all([

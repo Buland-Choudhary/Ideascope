@@ -11,13 +11,18 @@ import pytest
 from app.config import Settings
 from app.generation.plan import PlanGenerationError, generate_plan
 from app.generation.schema import BeatPlan, LessonPlan
-from app.models import Engine, LessonParams, Primitive
+from app.models import Engine, LessonParams, Palette, Primitive
+
+_PALETTE = Palette(
+    background="#f8fafc", primary="#4f46e5", secondary="#f59e0b", text="#334155", muted="#cbd5e1"
+)
 
 
 def _plan(n_beats: int) -> LessonPlan:
     return LessonPlan(
         title="T",
         summary="S",
+        palette=_PALETTE,
         beats=[
             BeatPlan(
                 intent=f"intent {i}",

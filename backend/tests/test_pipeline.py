@@ -10,12 +10,15 @@ import pytest
 
 from app.config import Settings
 from app.generation.schema import BeatPlan
-from app.models import BeatStatus, Engine, Primitive
+from app.models import BeatStatus, Engine, Palette, Primitive
 from app.validation import pipeline as pipeline_module
 from app.validation.render_check import RenderCheckResult
 from app.validation.schema import Critique
 
 SETTINGS = Settings(critique_model="claude-opus-4-8", auto_fix_model="claude-haiku-4-5")
+_PALETTE = Palette(
+    background="#f8fafc", primary="#4f46e5", secondary="#f59e0b", text="#334155", muted="#cbd5e1"
+)
 
 
 def _beat_plan() -> BeatPlan:
@@ -43,6 +46,7 @@ def _validate(**overrides: object) -> pipeline_module.ValidatedBeat:
         "code": "orig",
         "lesson_id": "l1",
         "beat_index": 0,
+        "palette": _PALETTE,
     }
     kwargs.update(overrides)
     return pipeline_module.validate_beat(**kwargs)  # type: ignore[arg-type]

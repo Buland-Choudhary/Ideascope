@@ -51,6 +51,7 @@ const ctx = {{
   reducedMotion: !!cfg.reducedMotion,
   ready: fireReady,
   gsap: window.gsap,
+  palette: cfg.palette,
 }};
 
 window.addEventListener("message", (ev) => {{
@@ -117,11 +118,32 @@ def _escape_for_html_attr(s: str) -> str:
     return s.replace("&", "&amp;").replace('"', "&quot;")
 
 
+_DEFAULT_PALETTE = {
+    "background": "#f8fafc",
+    "primary": "#4f46e5",
+    "secondary": "#f59e0b",
+    "text": "#334155",
+    "muted": "#cbd5e1",
+}
+
+
 def build_scene_srcdoc(
-    *, engine: str, code: str, params: dict[str, object], reduced_motion: bool = False
+    *,
+    engine: str,
+    code: str,
+    params: dict[str, object],
+    reduced_motion: bool = False,
+    palette: dict[str, str] | None = None,
 ) -> str:
     """The sandboxed document — identical shape to the frontend's srcdoc."""
-    cfg = json.dumps({"engine": engine, "params": params, "reducedMotion": reduced_motion})
+    cfg = json.dumps(
+        {
+            "engine": engine,
+            "params": params,
+            "reducedMotion": reduced_motion,
+            "palette": palette or _DEFAULT_PALETTE,
+        }
+    )
     scene_code_literal = json.dumps(code)
     p5_tag = f"<script>{_P5_SOURCE}</script>" if engine == "canvas" else ""
     gsap_tag = f"<script>{_GSAP_SOURCE}</script>"

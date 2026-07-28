@@ -134,6 +134,21 @@ class Manipulable(CamelModel):
         return self
 
 
+class Palette(CamelModel):
+    """A lesson-wide color scheme, chosen once by the plan stage to fit the
+    topic's mood — every beat's generated scene reads these same values
+    instead of picking its own, so a lesson reads as one deliberately
+    designed thing rather than a patchwork of independently-styled beats.
+    All fields are hex color strings (e.g. ``"#4f46e5"``).
+    """
+
+    background: str = Field(description="Page/canvas background — a soft near-white or near-black.")
+    primary: str = Field(description="Main accent for the focal shape/series.")
+    secondary: str = Field(description="Secondary accent for a second series or contrast.")
+    text: str = Field(description="Body/label text — strong contrast against background.")
+    muted: str = Field(description="Gridlines, tracks, and de-emphasized elements.")
+
+
 class Narration(CamelModel):
     # Always present (docs/PLAN.md D5); TTS reads this client-side in MVP.
     text: str
@@ -174,11 +189,25 @@ class Beat(CamelModel):
         return self
 
 
+def _default_palette() -> Palette:
+    # The house palette from before per-lesson palettes existed — kept as the
+    # default so hand-authored fixtures (docs/PLAN.md's mock lessons, which
+    # predate this field) still validate without editing their JSON.
+    return Palette(
+        background="#f8fafc",
+        primary="#4f46e5",
+        secondary="#f59e0b",
+        text="#334155",
+        muted="#cbd5e1",
+    )
+
+
 class Lesson(CamelModel):
     id: str
     topic: str
     params: LessonParams
     outline: Outline
+    palette: Palette = Field(default_factory=_default_palette)
     beats: list[Beat]
 
     @model_validator(mode="after")

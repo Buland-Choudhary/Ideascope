@@ -10,11 +10,21 @@ from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # Models a learner can pick for a lesson's plan+beat generation (docs/PLAN.md
-# §14 cost-experimentation note) — deliberately just the three models the app
-# already prices and uses elsewhere (app/observability/pricing.py), not an
-# arbitrary passthrough string, so a request can't name an unpriced or
-# unvetted model.
-ALLOWED_GENERATION_MODELS: list[str] = ["claude-opus-4-8", "claude-sonnet-5", "claude-haiku-4-5"]
+# §14 cost-experimentation note) — deliberately an allowlist the app also
+# prices elsewhere (app/observability/pricing.py), not an arbitrary passthrough
+# string, so a request can't name an unpriced or unvetted model. Limited to
+# models confirmed to support structured outputs (client.messages.parse, which
+# every generation call in this app uses) per the claude-api skill's
+# documentation — Opus 4.7/4.6 and Sonnet 4.6 are deliberately excluded even
+# though they're current Anthropic models, since they're not on that confirmed
+# list and every stage here (plan/beat/code-review/critique) depends on it.
+ALLOWED_GENERATION_MODELS: list[str] = [
+    "claude-fable-5",
+    "claude-opus-5",
+    "claude-opus-4-8",
+    "claude-sonnet-5",
+    "claude-haiku-4-5",
+]
 
 
 class Settings(BaseSettings):

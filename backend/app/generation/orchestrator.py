@@ -36,6 +36,7 @@ from app.models import (
     LessonParams,
     Narration,
     Outline,
+    Palette,
     Scene,
 )
 from app.state import LessonState
@@ -75,6 +76,7 @@ def run_lesson_generation(
         topic=topic,
         params=params,
         outline=Outline(title=plan.title, summary=plan.summary, target_beat_count=len(plan.beats)),
+        palette=plan.palette,
         beats=[],
     )
     state.set_lesson(lesson)
@@ -102,11 +104,15 @@ def run_lesson_generation(
     )
     if concurrency == 1:
         for i, beat_plan in enumerate(plan.beats):
-            state.add_beat(_build_beat(client, settings, beat_plan, lesson.id, i, state))
+            state.add_beat(
+                _build_beat(client, settings, beat_plan, lesson.id, i, state, plan.palette)
+            )
     else:
         with ThreadPoolExecutor(max_workers=concurrency) as pool:
             futures = {
-                pool.submit(_build_beat, client, settings, beat_plan, lesson.id, i, state): i
+                pool.submit(
+                    _build_beat, client, settings, beat_plan, lesson.id, i, state, plan.palette
+                ): i
                 for i, beat_plan in enumerate(plan.beats)
             }
             for future in as_completed(futures):
@@ -122,6 +128,7 @@ def _build_beat(
     lesson_id: str,
     index: int,
     state: LessonState,
+    palette: Palette,
 ) -> Beat:
     """Generate+validate one beat and return it, degrading to a fallback on
     any unexpected failure. Runs on a worker thread — one per concurrently
@@ -135,6 +142,7 @@ def _build_beat(
             beat_plan=beat_plan,
             lesson_id=lesson_id,
             beat_index=index,
+            palette=palette,
             on_usage=state.record_usage,
         )
         return Beat(

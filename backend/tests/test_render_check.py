@@ -73,6 +73,23 @@ export default function createScene(ctx) {
 }
 """
 
+PALETTE_CANVAS = """
+export default function createScene(ctx) {
+  const required = ["background", "primary", "secondary", "text", "muted"];
+  for (const key of required) {
+    if (typeof ctx.palette[key] !== "string") {
+      throw new Error("ctx.palette." + key + " missing");
+    }
+  }
+  if (ctx.palette.primary !== "#112233") {
+    throw new Error("unexpected ctx.palette.primary: " + ctx.palette.primary);
+  }
+  ctx.p5.background(255);
+  ctx.ready();
+  return {};
+}
+"""
+
 GSAP_SVG = """
 export default function createScene(ctx) {
   if (!ctx.gsap || typeof ctx.gsap.to !== "function") {
@@ -134,6 +151,24 @@ def test_gsap_is_available_in_svg_scenes() -> None:
     assert result.ok is True
     assert result.error is None
     assert result.screenshot is not None
+
+
+def test_custom_palette_reaches_ctx_palette() -> None:
+    palette = {
+        "background": "#000011",
+        "primary": "#112233",
+        "secondary": "#445566",
+        "text": "#ffffff",
+        "muted": "#778899",
+    }
+    result = render_check(engine="canvas", code=PALETTE_CANVAS, params={}, palette=palette)
+    assert result.ok is True
+    assert result.error is None
+
+
+def test_default_palette_is_used_when_none_given() -> None:
+    result = render_check(engine="canvas", code=GOOD_CANVAS, params={})
+    assert result.ok is True
 
 
 def test_svg_scene_with_manipulable_interaction() -> None:

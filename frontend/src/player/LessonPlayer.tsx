@@ -59,14 +59,14 @@ export function LessonPlayer({
 
   return (
     <section className="mx-auto flex max-w-3xl flex-col gap-4 p-6">
-      <header className="flex items-baseline justify-between">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">{lesson.outline.title}</h1>
+      <header className="flex flex-col gap-3 sm:flex-row sm:items-baseline sm:justify-between">
+        <div className="min-w-0">
+          <h1 className="text-2xl font-bold tracking-tight break-words">{lesson.outline.title}</h1>
           <p className="text-sm text-gray-500">
             Beat {player.index + 1} of {player.total}
           </p>
         </div>
-        <div className="flex items-center gap-4">
+        <div className="flex flex-wrap items-center gap-3 sm:gap-4">
           {generationStatus === "complete" && usage && <UsageBadge usage={usage} />}
           <button
             type="button"
@@ -92,7 +92,7 @@ export function LessonPlayer({
 
       {player.beat ? (
         <>
-          <SceneRenderer beat={player.beat} params={player.params} />
+          <SceneRenderer beat={player.beat} params={player.params} palette={lesson.palette} />
 
           <ManipulableControls
             manipulables={player.beat.manipulables}

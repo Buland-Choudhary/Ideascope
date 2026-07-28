@@ -46,6 +46,7 @@ export default function createScene(ctx) {
 | `ctx.p5` | p5 instance | **canvas engine only.** Instance-mode p5; the canvas is already created at `width × height` and attached. Draw with `ctx.p5.*` (also passed to `setup`/`draw` for convenience). |
 | `ctx.svg` | `SVGSVGElement` | **svg engine only.** An `<svg>` element, sized and attached. Append namespaced children to it. |
 | `ctx.gsap` | GSAP module | **both engines.** The full GSAP 3 API (`gsap.to()`, `.from()`, `.timeline()`, eases) for tweening a transition instead of hand-rolled easing math — see §2.1. |
+| `ctx.palette` | `{ background, primary, secondary, text, muted }` | **both engines.** This lesson's five-color scheme, each a hex string, chosen once by the plan stage to fit the topic's mood — see §2.2. |
 | `ctx.width` | number | Stage width in CSS px. |
 | `ctx.height` | number | Stage height in CSS px. |
 | `ctx.params` | `Record<string, number \| string \| boolean>` | Current manipulable values, keyed by each manipulable's `param`. |
@@ -69,6 +70,33 @@ of engine, since it's a tweening/timeline library, not a rendering surface.
   `draw`.
 - **`ctx.reducedMotion`**: skip `ctx.gsap` tweens entirely and set the end
   value directly; don't animate into the settled state.
+
+### 2.2 `ctx.palette` — additive, non-breaking (added post-freeze)
+
+Also a pure addition, same rationale as `ctx.gsap` above: a lesson-wide color
+scheme, chosen once by the plan stage (`LessonPlan.palette` /
+`app/generation/schema.py`) to fit the specific topic's mood, then carried on
+the generated `Lesson` (`lesson.palette`) and injected into every beat's `ctx`
+at render time — so a lesson reads as one deliberately designed thing instead
+of a patchwork of independently-styled beats, and the model never has to type
+a hex code (and risk getting it wrong) into generated source.
+
+- `ctx.palette.background` — page/canvas background; a soft near-white or
+  near-black, never a stark `#fff`/`#000`.
+- `ctx.palette.primary` — the main accent, for the focal shape/series.
+- `ctx.palette.secondary` — a second accent, for a second series/value that
+  needs to read as clearly distinct from `primary`.
+- `ctx.palette.text` — body/label text, with strong contrast against
+  `background`.
+- `ctx.palette.muted` — gridlines, tracks, and de-emphasized elements.
+
+Both p5 (`p.background()`, `p.fill()`, `p.stroke()`, `p.drawingContext.shadowColor`)
+and raw SVG attributes accept a CSS hex color string directly, so scene code
+just references `ctx.palette.primary` etc. — no color parsing or math needed.
+Before this field existed, every lesson used one fixed hardcoded palette; that
+same palette is now the default (`Lesson.palette`'s default factory in
+`app/models/lesson.py`) so hand-authored fixtures that predate this field
+still validate unmodified.
 
 **Note on `ctx.katex`:** an earlier draft of this contract and the beat-
 generation prompt documented `ctx.katex` (math rendering) as available. It was

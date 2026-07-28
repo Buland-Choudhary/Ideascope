@@ -18,11 +18,21 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.api.lessons import get_lesson_beat
-from app.config import get_settings
+from app.config import ALLOWED_GENERATION_MODELS, get_settings
 from app.generation import orchestrator as orchestrator_module
 from app.generation.schema import BeatCode, BeatPlan, LessonPlan
 from app.main import app
-from app.models import Beat, Engine, Lesson, LessonParams, Narration, Outline, Primitive, Scene
+from app.models import (
+    Beat,
+    Engine,
+    Lesson,
+    LessonParams,
+    Narration,
+    Outline,
+    Palette,
+    Primitive,
+    Scene,
+)
 from app.state import get_lesson_store
 from app.validation.schema import Critique
 
@@ -220,7 +230,7 @@ def test_list_models_returns_the_curated_pricing_table() -> None:
     resp = client.get("/api/models")
     assert resp.status_code == 200
     body = resp.json()
-    assert {m["id"] for m in body} == {"claude-opus-4-8", "claude-sonnet-5", "claude-haiku-4-5"}
+    assert {m["id"] for m in body} == set(ALLOWED_GENERATION_MODELS)
     for m in body:
         assert m["inputPricePerMtok"] > 0
         assert m["outputPricePerMtok"] > 0
@@ -245,6 +255,13 @@ def test_create_lesson_with_model_override_is_used_for_plan_and_beat_calls(
                 plan = LessonPlan(
                     title="T",
                     summary="S",
+                    palette=Palette(
+                        background="#f8fafc",
+                        primary="#4f46e5",
+                        secondary="#f59e0b",
+                        text="#334155",
+                        muted="#cbd5e1",
+                    ),
                     beats=[
                         BeatPlan(
                             intent=f"i{i}",

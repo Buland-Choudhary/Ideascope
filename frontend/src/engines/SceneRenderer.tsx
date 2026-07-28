@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
-import type { Beat, ParamValue } from "../types/lesson";
+import { DEFAULT_PALETTE } from "../types/lesson";
+import type { Beat, Palette, ParamValue } from "../types/lesson";
 import { scanSceneCode } from "./denylist";
 import { buildSceneDocument, ERROR, READY, UPDATE_PARAM } from "./sceneRuntime";
 
@@ -17,6 +18,9 @@ function prefersReducedMotion(): boolean {
 interface SceneRendererProps {
   beat: Beat;
   params: Record<string, ParamValue>;
+  /** Defaults to the house palette — only absent for lessons that predate
+   * per-lesson palettes (e.g. hand-authored fixtures). */
+  palette?: Palette;
 }
 
 /**
@@ -24,7 +28,7 @@ interface SceneRendererProps {
  * The iframe is rebuilt only when the beat changes; manipulable changes flow
  * through as `updateParam` messages without a reload.
  */
-export function SceneRenderer({ beat, params }: SceneRendererProps) {
+export function SceneRenderer({ beat, params, palette = DEFAULT_PALETTE }: SceneRendererProps) {
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const [status, setStatus] = useState<Status>("loading");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -50,6 +54,7 @@ export function SceneRenderer({ beat, params }: SceneRendererProps) {
       code: beat.scene.code,
       params: initialParamsRef.current,
       reducedMotion: prefersReducedMotion(),
+      palette,
     }).then((doc) => {
       if (!cancelled) setSrcDoc(doc);
     });
@@ -57,7 +62,7 @@ export function SceneRenderer({ beat, params }: SceneRendererProps) {
       cancelled = true;
     };
     // Rebuild only per beat; initialParamsRef (a ref) is read at build time.
-  }, [beat.id, beat.engine, beat.scene.code, scan.ok]);
+  }, [beat.id, beat.engine, beat.scene.code, scan.ok, palette]);
 
   // Reset status when the beat (and thus the iframe) changes.
   useEffect(() => {

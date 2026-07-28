@@ -67,6 +67,7 @@ class LessonState:
             {
                 "lessonId": lesson.id,
                 "outline": lesson.outline.model_dump(mode="json", by_alias=True),
+                "palette": lesson.palette.model_dump(mode="json", by_alias=True),
             },
         )
 

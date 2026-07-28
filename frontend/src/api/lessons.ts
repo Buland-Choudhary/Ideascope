@@ -1,4 +1,4 @@
-import type { Beat, Duration, LessonUsage, ModelOption, Outline } from "../types/lesson";
+import type { Beat, Duration, LessonUsage, ModelOption, Outline, Palette } from "../types/lesson";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000";
 
@@ -51,7 +51,7 @@ export async function fetchModels(): Promise<ModelOption[]> {
 }
 
 export interface LessonStreamHandlers {
-  onOutline: (outline: Outline) => void;
+  onOutline: (outline: Outline, palette: Palette) => void;
   onBeat: (beat: Beat) => void;
   onBeatFailed?: (index: number, error: string) => void;
   onComplete: (usage: LessonUsage | null) => void;
@@ -69,8 +69,8 @@ export function streamLesson(lessonId: string, handlers: LessonStreamHandlers): 
   const source = new EventSource(`${API_BASE_URL}/api/lessons/${lessonId}/stream`);
 
   source.addEventListener("outline_ready", (e) => {
-    const data = JSON.parse((e as MessageEvent).data) as { outline: Outline };
-    handlers.onOutline(data.outline);
+    const data = JSON.parse((e as MessageEvent).data) as { outline: Outline; palette: Palette };
+    handlers.onOutline(data.outline, data.palette);
   });
   source.addEventListener("beat_ready", (e) => {
     const data = JSON.parse((e as MessageEvent).data) as { beat: Beat };

@@ -1,5 +1,6 @@
 import { expect, test } from "vitest";
 
+import { DEFAULT_PALETTE } from "./lesson";
 import type { Beat, Lesson, LessonUsage, ModelOption } from "./lesson";
 
 // Compile-time check that the mirrored types are internally consistent and
@@ -27,6 +28,7 @@ const sampleLesson: Lesson = {
   topic: "Sample topic",
   params: { duration: "short" },
   outline: { title: "Sample", summary: "A sample lesson.", targetBeatCount: 1 },
+  palette: DEFAULT_PALETTE,
   beats: [sampleBeat],
 };
 

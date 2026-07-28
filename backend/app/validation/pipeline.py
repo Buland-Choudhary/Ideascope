@@ -10,7 +10,7 @@ from typing import Any
 from app.config import Settings
 from app.generation.beat import generate_beat_scene
 from app.generation.schema import BeatPlan
-from app.models import BeatStatus
+from app.models import BeatStatus, Palette
 from app.observability import UsageRecorder, log_generation_event
 from app.validation.auto_fix import auto_fix_scene
 from app.validation.critique import critique_screenshot
@@ -45,6 +45,7 @@ def _render_with_auto_fix(
     lesson_id: str,
     beat_index: int,
     on_usage: UsageRecorder | None,
+    palette: Palette,
 ) -> tuple[RenderCheckResult, str, int]:
     """Render-check ``code``, repairing via auto-fix up to the attempt budget.
 
@@ -54,6 +55,7 @@ def _render_with_auto_fix(
     current_code = code
     fix_attempts = 0
     params = _default_params(manipulables)
+    palette_dict = palette.model_dump(mode="json", by_alias=False)
 
     for round_ in range(_MAX_AUTO_FIX_ATTEMPTS + 1):
         result = render_check(
@@ -63,6 +65,7 @@ def _render_with_auto_fix(
             manipulables=manipulables,
             timeout_ms=settings.render_timeout_ms,
             max_concurrent=settings.max_concurrent_renders,
+            palette=palette_dict,
         )
         if result.ok or round_ >= _MAX_AUTO_FIX_ATTEMPTS:
             return result, current_code, fix_attempts
@@ -93,6 +96,7 @@ def validate_beat(
     code: str,
     lesson_id: str,
     beat_index: int,
+    palette: Palette,
     on_usage: UsageRecorder | None = None,
 ) -> ValidatedBeat:
     """Run the full validation pipeline and return a beat that's safe to ship.
@@ -117,6 +121,7 @@ def validate_beat(
             lesson_id=lesson_id,
             beat_index=beat_index,
             on_usage=on_usage,
+            palette=palette,
         )
         total_auto_fix_attempts += fix_attempts
 

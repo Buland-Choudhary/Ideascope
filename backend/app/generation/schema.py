@@ -9,7 +9,7 @@ service layer assembles a full ``Lesson`` from a ``LessonPlan``.
 
 from pydantic import BaseModel, Field
 
-from app.models import Engine, Manipulable, Primitive
+from app.models import Engine, Manipulable, Palette, Primitive
 
 
 class BeatPlan(BaseModel):
@@ -28,6 +28,9 @@ class BeatPlan(BaseModel):
 class LessonPlan(BaseModel):
     title: str = Field(description="A concise lesson title.")
     summary: str = Field(description="A one- or two-sentence summary of the whole lesson.")
+    palette: Palette = Field(
+        description="One color scheme for the whole lesson, fit to the topic's mood."
+    )
     beats: list[BeatPlan] = Field(description="The ordered beats that make up the lesson.")
 
 

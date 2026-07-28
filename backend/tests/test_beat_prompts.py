@@ -52,3 +52,24 @@ def test_system_prompt_no_longer_promises_katex() -> None:
 
 def test_system_prompt_documents_gsap() -> None:
     assert "ctx.gsap" in BEAT_SYSTEM_PROMPT
+
+
+def test_system_prompt_documents_palette() -> None:
+    assert "ctx.palette" in BEAT_SYSTEM_PROMPT
+
+
+@pytest.mark.parametrize("primitive", list(Primitive))
+def test_fewshot_uses_ctx_palette_not_hardcoded_colors(primitive: Primitive) -> None:
+    js = _extract_js(_FEWSHOTS[primitive])
+    assert "ctx.palette" in js
+    # Every hardcoded hex/rgb color in the pre-palette design system should
+    # have been replaced by a ctx.palette.* reference — except the shadow
+    # filter's flood-color tint, which is deliberately not a palette color
+    # (see the design-system rule in _CONTRACT_RULES).
+    assert "#f8fafc" not in js
+    assert "#4f46e5" not in js
+    assert "#f59e0b" not in js
+    assert "#334155" not in js
+    assert "#cbd5e1" not in js
+    assert "#e2e8f0" not in js
+    assert "rgba(79,70,229" not in js

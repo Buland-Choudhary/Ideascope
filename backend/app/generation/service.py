@@ -28,6 +28,7 @@ from app.models import (
     LessonParams,
     Narration,
     Outline,
+    Palette,
     Scene,
 )
 from app.observability import UsageRecorder, log_generation_event
@@ -66,6 +67,7 @@ def _lesson_from_plan(topic: str, params: LessonParams, plan: LessonPlan) -> Les
         topic=topic,
         params=params,
         outline=Outline(title=plan.title, summary=plan.summary, target_beat_count=len(beats)),
+        palette=plan.palette,
         beats=beats,
     )
 
@@ -77,6 +79,7 @@ def generate_and_validate_beat(
     beat_plan: BeatPlan,
     lesson_id: str,
     beat_index: int,
+    palette: Palette,
     on_usage: UsageRecorder | None = None,
 ) -> tuple[Scene, BeatStatus, BeatValidation]:
     """Generate one beat's scene code and run it through the validation
@@ -178,6 +181,7 @@ def generate_and_validate_beat(
         code=code,
         lesson_id=lesson_id,
         beat_index=beat_index,
+        palette=palette,
         on_usage=on_usage,
     )
     return (
@@ -218,7 +222,12 @@ def generate_lesson(settings: Settings, *, topic: str, params: LessonParams) -> 
 
     for i, (beat_plan, beat) in enumerate(zip(plan.beats, lesson.beats, strict=True)):
         scene, status, validation = generate_and_validate_beat(
-            client, settings, beat_plan=beat_plan, lesson_id=lesson.id, beat_index=i
+            client,
+            settings,
+            beat_plan=beat_plan,
+            lesson_id=lesson.id,
+            beat_index=i,
+            palette=lesson.palette,
         )
         beat.scene = scene
         beat.status = status

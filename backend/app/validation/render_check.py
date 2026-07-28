@@ -53,6 +53,7 @@ def render_check(
     manipulables: list[Any] | None = None,
     timeout_ms: int = 5000,
     max_concurrent: int = 3,
+    palette: dict[str, str] | None = None,
 ) -> RenderCheckResult:
     """Load ``code`` in a sandboxed browser and report whether it renders.
 
@@ -62,7 +63,7 @@ def render_check(
     report, an uncaught exception, or a hang — is a failure with a message
     suitable for feeding back to the auto-fix model.
     """
-    srcdoc = build_scene_srcdoc(engine=engine, code=code, params=params)
+    srcdoc = build_scene_srcdoc(engine=engine, code=code, params=params, palette=palette)
     harness = build_harness_html(srcdoc)
 
     with browser_module.get_page(max_concurrent=max_concurrent) as page:

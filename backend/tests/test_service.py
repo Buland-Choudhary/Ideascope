@@ -11,14 +11,19 @@ import pytest
 from app.config import Settings
 from app.generation.schema import BeatCode, BeatPlan, LessonPlan
 from app.generation.service import GenerationUnavailableError, generate_lesson
-from app.models import BeatStatus, Duration, Engine, LessonParams, Primitive
+from app.models import BeatStatus, Duration, Engine, LessonParams, Palette, Primitive
 from app.validation.schema import Critique
+
+_PALETTE = Palette(
+    background="#f8fafc", primary="#4f46e5", secondary="#f59e0b", text="#334155", muted="#cbd5e1"
+)
 
 
 def _plan(n_beats: int) -> LessonPlan:
     return LessonPlan(
         title="Test Lesson",
         summary="A test lesson.",
+        palette=_PALETTE,
         beats=[
             BeatPlan(
                 intent=f"intent {i}",

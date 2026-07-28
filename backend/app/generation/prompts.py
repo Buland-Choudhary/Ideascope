@@ -44,6 +44,23 @@ value teaches the concept (e.g. a slider for amplitude). Each has a unique \
 lowercase 'param' key the scene will read, a 'default', and range/options as \
 appropriate. Most beats need zero or one; never add controls for decoration.
 
+PALETTE: choose ONE color scheme for the whole lesson, fit to the topic's \
+mood — every beat will be generated against these exact colors, so the \
+lesson reads as one deliberately designed thing instead of a patchwork of \
+independently-styled beats. All five values are hex colors:
+- `background`: a soft near-white or near-black — never a stark `#fff`/`#000`.
+- `primary`: the main accent, for the focal shape/series in most beats.
+- `secondary`: a second accent that reads as clearly distinct from `primary` \
+at a glance — needed for any beat that compares two things.
+- `text`: body/label text, with strong, comfortable contrast against `background`.
+- `muted`: gridlines, tracks, and de-emphasized elements — low-contrast \
+against `background`, but still visible.
+Pick colors that suit the subject (e.g. warm ochres/greens for soil or plant \
+biology, cool blues/teals for oceans or space, warm ambers/reds for \
+combustion or energy, restrained blues/grays for engineering or data) rather \
+than defaulting to the same palette every time — but keep it tasteful and \
+readable over novelty: avoid neon, muddy, or low-contrast combinations.
+
 Keep narration tight and plain — a sentence or two per beat, readable aloud."""
 
 

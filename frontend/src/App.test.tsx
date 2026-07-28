@@ -5,6 +5,7 @@ import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { App } from "./App";
 import { FIXTURES } from "./fixtures";
 import { FakeEventSource } from "./test-support/fakeEventSource";
+import { DEFAULT_PALETTE } from "./types/lesson";
 
 beforeEach(() => {
   FakeEventSource.reset();
@@ -55,7 +56,9 @@ test("generating a lesson streams the outline then each beat as it arrives", asy
   const source = FakeEventSource.latest();
   expect(source.url).toContain("/api/lessons/lesson-abc/stream");
 
-  act(() => source.emit("outline_ready", { outline: lesson.outline }));
+  act(() =>
+    source.emit("outline_ready", { outline: lesson.outline, palette: DEFAULT_PALETTE }),
+  );
   await waitFor(() => expect(screen.getByText(lesson.outline.title)).toBeInTheDocument());
   // Beat 1 hasn't arrived yet — the player shows the "preparing" placeholder.
   expect(screen.getByText(/Still preparing this part/)).toBeInTheDocument();
@@ -132,7 +135,9 @@ test("shows the token/cost badge once lesson_complete carries a usage report", a
   await waitFor(() => expect(screen.getByText(/Planning your lesson/)).toBeInTheDocument());
 
   const source = FakeEventSource.latest();
-  act(() => source.emit("outline_ready", { outline: lesson.outline }));
+  act(() =>
+    source.emit("outline_ready", { outline: lesson.outline, palette: DEFAULT_PALETTE }),
+  );
   for (let i = 0; i < lesson.beats.length; i++) {
     act(() => source.emit("beat_ready", { index: i, beat: lesson.beats[i] }));
   }

@@ -64,6 +64,29 @@ export interface Manipulable {
   options?: string[] | null;
 }
 
+/** A lesson-wide color scheme, chosen once by the plan stage to fit the
+ * topic's mood (docs/SCENE_CONTRACT.md §2.2) — every beat's scene reads these
+ * same values via `ctx.palette` instead of picking its own. All fields are
+ * hex color strings (e.g. `"#4f46e5"`). */
+export interface Palette {
+  background: string;
+  primary: string;
+  secondary: string;
+  text: string;
+  muted: string;
+}
+
+/** The house palette from before per-lesson palettes existed — a fallback for
+ * lessons that predate this field (e.g. hand-authored fixtures emitted before
+ * it was added) so they keep rendering with their original, matching colors. */
+export const DEFAULT_PALETTE: Palette = {
+  background: "#f8fafc",
+  primary: "#4f46e5",
+  secondary: "#f59e0b",
+  text: "#334155",
+  muted: "#cbd5e1",
+};
+
 export interface Narration {
   text: string;
 }
@@ -97,6 +120,7 @@ export interface Lesson {
   topic: string;
   params: LessonParams;
   outline: Outline;
+  palette: Palette;
   beats: Beat[];
 }
 
@@ -136,4 +160,4 @@ export interface LessonUsage {
  * far — which may be fewer than `targetBeatCount` while `beats.length <
  * outline.targetBeatCount` and `status` is still `"generating"`.
  */
-export type PlayableLesson = Pick<Lesson, "id" | "outline" | "beats">;
+export type PlayableLesson = Pick<Lesson, "id" | "outline" | "palette" | "beats">;

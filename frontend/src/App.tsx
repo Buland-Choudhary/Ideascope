@@ -16,7 +16,9 @@ import type {
 // to the id itself for any model GET /api/models returns that isn't listed
 // here, so a server-side addition never breaks the picker.
 const MODEL_LABELS: Record<string, string> = {
-  "claude-opus-4-8": "Opus — highest quality, priciest",
+  "claude-fable-5": "Fable 5 — most capable, priciest",
+  "claude-opus-5": "Opus 5 — highest quality",
+  "claude-opus-4-8": "Opus 4.8 — high quality",
   "claude-sonnet-5": "Sonnet 5 — balanced (default)",
   "claude-haiku-4-5": "Haiku — fastest, cheapest",
 };
@@ -86,10 +88,10 @@ function useLiveLesson(lessonId: string | null): LiveLessonState {
     setState({ lesson: null, status: "generating", error: null, usage: null });
 
     return streamLesson(lessonId, {
-      onOutline: (outline) => {
+      onOutline: (outline, palette) => {
         setState((prev) => ({
           ...prev,
-          lesson: { id: lessonId, outline, beats: prev.lesson?.beats ?? [] },
+          lesson: { id: lessonId, outline, palette, beats: prev.lesson?.beats ?? [] },
         }));
       },
       onBeat: (beat) => {
@@ -206,13 +208,13 @@ function Landing({
             disabled={status === "generating"}
             className="min-w-0 flex-1 rounded-lg border border-gray-300 px-3 py-2 focus:border-gray-500 focus:outline-none focus:ring-2 focus:ring-gray-400"
           />
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             <select
               aria-label="Duration"
               value={duration}
               onChange={(e) => setDuration(e.target.value as Duration)}
               disabled={status === "generating"}
-              className="rounded-lg border border-gray-300 px-2 py-2 text-sm"
+              className="min-w-0 flex-1 rounded-lg border border-gray-300 px-2 py-2 text-sm sm:flex-none"
             >
               <option value="short">Short</option>
               <option value="medium">Medium</option>
@@ -224,7 +226,7 @@ function Landing({
                 value={model}
                 onChange={(e) => setModel(e.target.value)}
                 disabled={status === "generating"}
-                className="rounded-lg border border-gray-300 px-2 py-2 text-sm"
+                className="min-w-0 max-w-[10rem] flex-1 rounded-lg border border-gray-300 px-2 py-2 text-sm sm:max-w-none sm:flex-none"
               >
                 <option value="">Auto (server default)</option>
                 {models.map((m) => (
@@ -237,7 +239,7 @@ function Landing({
             <button
               type="submit"
               disabled={status === "generating" || !topic.trim()}
-              className="flex-1 rounded-lg bg-gray-900 px-4 py-2 font-medium text-white enabled:hover:bg-gray-700 disabled:opacity-40 sm:flex-none"
+              className="w-full rounded-lg bg-gray-900 px-4 py-2 font-medium text-white enabled:hover:bg-gray-700 disabled:opacity-40 sm:w-auto"
             >
               {status === "generating" ? "Generating…" : "Generate"}
             </button>
