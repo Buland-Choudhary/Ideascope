@@ -28,6 +28,10 @@ jobs:
         run: uv run ruff format --check .
       - name: Type-check (mypy)
         run: uv run mypy app
+      # The render-check and fallback tests drive a real headless Chromium
+      # (docs/PLAN.md Phase 5); the runner has none until Playwright fetches it.
+      - name: Install Chromium (Playwright)
+        run: uv run playwright install --with-deps chromium
       - name: Test (pytest)
         run: uv run pytest
 

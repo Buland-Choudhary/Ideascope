@@ -1,3 +1,4 @@
+import pytest
 from fastapi.testclient import TestClient
 
 from app import __version__
@@ -13,3 +14,9 @@ def test_health_ok() -> None:
     assert body["status"] == "ok"
     assert body["service"] == "ideascope-backend"
     assert body["version"] == __version__
+    assert body["generation"] == "real"
+
+
+def test_health_reports_mock_mode(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("IDEASCOPE_MOCK_GENERATION", "true")
+    assert client.get("/api/health").json()["generation"] == "mock"

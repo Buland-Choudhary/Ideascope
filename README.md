@@ -2,6 +2,8 @@
 
 **See any idea, one click at a time.**
 
+> **Status: parked (2026-11-07).** Not finished: Phase 7 and Phase 10 are open and the §16 demo-readiness checklist is unticked (see [`docs/PLAN.md`](docs/PLAN.md) §11). The deployed backend runs in mock mode — fixture lessons only, no Anthropic calls; `/api/health` reports `"generation": "mock"`. To resume real generation, set `IDEASCOPE_MOCK_GENERATION` to `"false"` in `render.yaml` (or the Render dashboard).
+
 Ideascope is an AI web app that turns any **topic** (plus optional parameters like **duration**) into a **self-paced, animation-heavy, interactive micro-lesson**. The lesson plays live in the browser and advances **one beat at a time on the user's click**. The goal is to make small, hard-to-grasp concepts genuinely *click* — through motion and interaction rather than walls of text.
 
 > This is the main description for the project. It's a distilled synthesis of the living Project Charter (currently v0.6). When a decision changes in the charter, mirror it here.
